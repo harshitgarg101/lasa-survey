@@ -1,0 +1,3292 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Drug name similarity — a study for pharmacists in India</title>
+<!-- An empty inline icon, so the browser does not request /favicon.ico.
+
+     Hosted, a browser asks for that by default on any document, and the
+     deployed page was making exactly one network request because of it. It
+     carried no rater data and 404'd -- but the consent screen says "This page
+     makes no network connection", and a participant reads that before
+     agreeing. A sentence in a consent statement should be true without a
+     footnote, so the request is removed rather than the sentence softened.
+     Found by verifying the live URL; the local file never requests it. -->
+<link rel="icon" href="data:,">
+<!--
+  Assembled by scripts/build_rating_app.py. Do not edit web/rating_app.html;
+  edit this template and rebuild, or the next build silently discards the edit.
+
+  Self-contained on purpose: no backend, no analytics, no network call of any
+  kind. The file is opened, worked through, and the answers leave by a route
+  the rater chooses. Nothing leaves the machine unless they send it.
+
+  Built to DESIGN_RATING_APP.md, which inherits DESIGN.md's tokens. Every
+  value below is from those two documents and `web/design_checks.js` asserts
+  them against the computed styles of the rendered page, at 1280px, 390px and
+  360px. A value not on a scale fails the suite.
+-->
+<style>
+  /* ==================================================================
+     Tokens -- DESIGN_RATING_APP.md §2, inheriting DESIGN.md §2 and §3.
+
+     Ten colours are defined by DESIGN.md; `--positive` and `--negative` are
+     not available in this app, because no semantic colour exists here -- a
+     rating is not good or bad and nothing on the screen may suggest it is.
+     ================================================================== */
+  :root {
+    /* One appearance, done properly. DESIGN.md §12 forbids dark mode, so
+       `color-scheme` is pinned rather than left to follow the system: left
+       to follow it, the browser repaints form controls in colours that are
+       on no scale in either document. */
+    color-scheme: light;
+
+    --bg: #FFFFFF;
+    --surface: #F6F7F8;
+    --border: #E3E5E8;
+    --border-strong: #C9CDD2;
+    --ink: #14171A;
+    --ink-2: #5B6169;
+    /* Defined, and carries no text anywhere in this app.
+
+       DESIGN.md §14 requires 4.5:1 for all text. `--ink-3` measures 3.22:1 on
+       `--bg` and 3.00:1 on `--surface`, so it cannot carry text on either
+       background the palette defines. DESIGN_RATING_APP.md specified it for
+       the progress count, the saved indicator, the milestone lines and the
+       1/5 endpoint labels; all four are `--ink-2`, and both specs are amended
+       to say so. The token stays defined so the palette is still ten, and the
+       reason stays here so it is not quietly put back.
+
+       It matters more here than on the name checker: the count and the saved
+       indicator are read at a glance, 150 times, by someone on a phone. An
+       element nobody can read does not build trust. */
+    --ink-3: #8A9099;
+    --accent: #1A3D8F;
+
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+            "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+            "Liberation Mono", monospace;
+
+    --t-xs: 12px;
+    --t-sm: 13px;
+    --t-base: 15px;
+    --t-lg: 18px;
+    --t-xl: 22px;
+    --t-name: 28px;
+    --t-name-m: 24px;
+  }
+
+  * { box-sizing: border-box; }
+
+  /* `html` as well as `body`. The user-agent default is #000000 at 16px, and
+     neither is on either scale -- invisible in the stylesheet, and exactly
+     what a computed-style check is for. */
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: var(--t-base);
+    line-height: 1.6;
+    font-weight: 400;
+  }
+
+  /* Never 700. `<b>` and `<strong>` carry the user-agent's bolder by default,
+     which is 700 -- the weight DESIGN.md §3 forbids by name. */
+  b, strong { font-weight: 500; }
+
+  h1, h2, h3 { margin: 0; font-weight: 600; }
+  h1 { font-size: var(--t-xl); line-height: 1.3; }
+  h2 { font-size: var(--t-base); line-height: 1.6; font-weight: 500; }
+  p { margin: 0; }
+
+  /* The column is centred in the viewport and the content is left-aligned
+     inside it. Centred with flex rather than `margin: 0 auto`: an auto margin
+     computes to whatever half the leftover width happens to be -- 180px at
+     1280 -- and DESIGN.md §4 puts every margin on the 4px scale. */
+  .screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px;
+  }
+  .column {
+    width: 100%;
+    max-width: 560px;      /* §3 -- narrower than the name checker's 920 */
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .prose { max-width: 68ch; }
+  /* The five paragraphs of §5 are paragraphs, not one block of text with
+     invisible breaks in it. `p { margin: 0 }` above clears the user-agent's
+     off-scale 16px; this puts the rhythm back on the 4px scale. */
+  #statement { display: flex; flex-direction: column; gap: 12px; }
+
+  /* ------------------------------------------------------------------
+     Buttons. One shape: 44px minimum in the smaller dimension, 1px border,
+     4px radius, no shadow, no transform, no hover lift.
+     ------------------------------------------------------------------ */
+  button {
+    font-family: var(--sans);
+    font-size: var(--t-base);
+    font-weight: 400;
+    line-height: 1.6;
+    min-height: 44px;
+    padding: 8px 16px;
+    margin: 0;
+    color: var(--ink-2);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 120ms ease-out, border-color 120ms ease-out,
+                opacity 120ms ease-out;
+  }
+  button:disabled { color: var(--ink-2); border-color: var(--border);
+                    cursor: default; opacity: 0.5; }
+
+  /* §7 -- the email route is the visually primary action on the last screen:
+     one accent-bordered button, larger than the other two. `--accent` is a
+     border and a text colour here, never a fill: DESIGN.md §2 allows it as a
+     background only for a focus ring. */
+  .primary {
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    font-weight: 500;
+    min-height: 48px;
+    padding: 12px 24px;
+  }
+
+  /* A link that behaves like a button, for the two `mailto:` routes. An `<a>`
+     is used rather than a `<button>` because a mail client needs an href to
+     open. (Not "the a-word for a link" -- that word is one of the six queue
+     labels, and this file is checked byte for byte for all six.) */
+  a.button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    font-size: var(--t-base);
+    line-height: 1.6;
+  }
+
+  /* Never removed. 2px accent at 2px offset, DESIGN.md §14. */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .muted { color: var(--ink-2); }
+  .small { font-size: var(--t-sm); line-height: 1.5; }
+  .xs { font-size: var(--t-xs); line-height: 1.4; }
+  .mono { font-family: var(--mono); }
+  [hidden] { display: none !important; }
+
+  /* ==================================================================
+     The item screen -- §3. 149 of a rater's 152 screens are this one.
+
+     One item fills the viewport and nothing scrolls, at any width. The grid
+     is three rows: the progress strip, the item, the navigation. The item row
+     takes the remaining height, so the names sit in the upper third and the
+     answer controls in the lower half, within thumb reach on a phone.
+     ================================================================== */
+  #screen-rate {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: 0;
+    /* `stretch`, not `start`. With `align-items: start` the item row does not
+       fill its `1fr` track, so the spacers inside it had nothing to
+       distribute and the controls stayed where they were. */
+    align-items: stretch;
+    justify-items: center;
+  }
+  #screen-rate > * { width: 100%; max-width: 560px; }
+
+  /* §4, as amended 2026-09-07: 4px, the width of the content column, 16px
+     below the top edge, 4px radius. It was 3px, full-bleed and square.
+
+     4px is the only radius DESIGN.md §5 permits, and the bar is inset to the
+     column because a full-bleed bar with rounded ends reads as a mistake at
+     the screen edges. */
+  .topbar { padding: 16px 16px 0; }
+  .track { height: 4px; background: var(--border); border-radius: 4px; }
+  .track > div {
+    height: 4px;
+    background: var(--accent);
+    width: 0;
+    border-radius: 4px;
+  }
+  .strip {
+    display: flex;
+    justify-content: flex-end;
+    align-items: baseline;
+    gap: 8px;
+    padding: 8px 0 0;
+    font-size: var(--t-xs);
+    line-height: 1.4;
+    color: var(--ink-2);
+  }
+  /* The single highest-value trust element in the app: two words of grey text
+     that tell a rater their work persists, so they pause instead of hurrying
+     to finish in one sitting. Hurried ratings on item 120 are worse than no
+     ratings. It holds for two seconds and clears. */
+  #saved { color: var(--ink-2); }
+  #milestone { color: var(--ink-2); }
+  /* §3 -- "The names sit in the upper third. The answer controls sit in the
+     lower half, within thumb reach on a phone."
+
+     Both halves of that need the spare height distributed rather than left at
+     the bottom. With everything packed to the top, a 390×844 phone put the
+     names correctly in the upper third and the 1-5 buttons at 360-405px --
+     the upper half, and a long reach from where a thumb rests. No
+     computed-style check catches it: every value is on the scale and nothing
+     overflows. It was visible in a screenshot of the live page and nowhere
+     else.
+
+     Two flexible spacers, 5:1, and the ratio is not arbitrary. The large one
+     sits below the names and is the whole of what satisfies §3's placement
+     rule, so it takes priority; the small one exists only to keep the note
+     clear of the navigation row, so the note's overlay is drawn over empty
+     space rather than over Back and Next. At 360x640 there are 85 spare
+     pixels and the controls need 68 of them, which is what sets the ratio.
+     On a shorter screen both collapse to nothing and the layout is what it
+     was. */
+  .item {
+    padding: 0 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 16px;
+  }
+  .stretch { flex: 1 1 0; min-height: 0; }
+  .stretch-2 { flex-grow: 5; }
+  .stretch-1 { flex-grow: 1; }
+
+  /* §3, as amended: the placement rule is stated *within thumb reach on a
+     phone*, and above 480px there is no thumb. Distributing the spare height
+     at every width made a canyon -- on a 625x800 laptop window the names
+     ended at 140px and the first control began at 480px. So the spacers are
+     for phones, and everything wider gets one centred block. */
+  @media (min-width: 481px) {
+    .item { justify-content: center; }
+    .stretch { display: none; }
+  }
+
+  /* The two names. Identical weight, size, colour and spacing: neither
+     position may imply anything. Directly on the page, not in a card and not
+     on `--surface`. 48 above and 48 below with nothing else in the band. */
+  #names { margin: 48px 0; }
+  /* The 16 between the names is the container's gap, not a margin on the
+     second one. §1 says the two names carry identical visual weight -- "same
+     size, same weight, same colour, same spacing" -- and `+ .align-name`
+     gives one of them a 16px top margin and the other none, which §11.4
+     catches as a difference between the two. A gap spaces them without
+     either carrying it. */
+  .alignment { display: flex; flex-direction: column; gap: 16px; }
+  .align-name {
+    font-family: var(--mono);
+    font-size: var(--t-name);
+    line-height: 1.1;
+    font-weight: 600;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  /* No letter-spacing and no per-character grid. DESIGN.md §9 gives the name
+     checker 0.04em "so the alignment grid reads"; there is no alignment grid
+     here, and a grid of cells would put the two names' characters into
+     columns -- which is a statement about where they differ, and the one
+     thing this screen must never make. `plain: true` already inserts no gaps;
+     this makes the rendering match. */
+  .align-cell { display: inline; width: auto; }
+
+  .question { display: flex; flex-direction: column; gap: 8px; }
+
+  /* §3 -- three buttons, then five. Equal width, 8 gap, 44px minimum.
+     Identical treatment across every button in a group: no affirmative
+     emphasis on Yes, and no colour, size or weight ramp on 1 to 5. A ramp
+     would prime every answer and the priming would be invisible in the
+     results. */
+  .choices { display: flex; gap: 8px; }
+  .choices > button {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 8px 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-align: center;
+  }
+  /* The key, beside the label it presses. Sans rather than `--mono`:
+     DESIGN.md §12 forbids monospace for small UI labels, and a key hint is
+     one. Hidden below 640px, where there is no keyboard to hint at and no
+     vertical space to spend saying so. */
+  .key { display: none; font-size: var(--t-xs); line-height: 1.4;
+         color: var(--ink-2); }
+  .keys { display: none; }
+  .choices > button[aria-pressed="true"] {
+    background: var(--surface);
+    border-color: var(--accent);
+    color: var(--ink);
+    font-weight: 500;
+  }
+  /* REQUIRED_ANSWERS.md §2 -- question 2 is locked until question 1 is
+     answered, and **a disabled control has to look disabled**. Five
+     live-looking buttons that do nothing is how a rater concludes the page is
+     broken and closes the tab.
+
+     `--ink-3` on `--surface`, which is the one place in either tool that
+     token can legitimately carry text. It is 3.00:1 there, below DESIGN.md
+     §14's floor -- and WCAG 1.4.3 exempts inactive components from the
+     contrast requirement by name, because a control a reader cannot operate
+     must not compete with one they can. `web/design_checks.js` encodes that
+     exemption rather than ignoring the token. */
+  .choices > button:disabled {
+    background: var(--surface);
+    border-color: var(--border);
+    color: var(--ink-3);
+    opacity: 1;
+    cursor: default;
+  }
+  /* §2's single line beneath the row is **the endpoint row itself**, with
+     the labels swapped out while the scale is locked.
+     
+     A line of its own cost 25px, and at 360x640 the item screen has none to
+     give: the answer controls moved to 297px of 640, above the middle §3 puts
+     them in, and a 320px-tall landscape screen overflowed outright. Reusing
+     the row costs nothing, keeps the two rows of buttons exactly where they
+     were, and means answering question 1 does not move the control the
+     rater's thumb is already over -- a shift between the look and the tap is
+     how somebody answers 4 meaning 5, with nothing in the export to show it.
+     
+     The endpoint labels are not lost: they return the instant the scale
+     unlocks, which is the only moment they can be acted on. */
+  #rating-locked { display: none; }
+  .ends.is-locked .ends-label { display: none; }
+  .ends.is-locked #rating-locked { display: inline; }
+  /* §3 -- Enter on an incomplete item highlights the unanswered question's
+     border. No error message, no red, no shake: the rater has not done
+     anything wrong, they have not finished. 600ms, and it is a transition on
+     border-color, which is one of the three properties DESIGN.md §8 allows. */
+  .choices.wants-an-answer > button {
+    border-color: var(--border-strong);
+  }
+
+  /* Beneath the row, under 1 and under 5. Nothing under 2, 3, 4. */
+  .ends {
+    display: flex;
+    justify-content: space-between;
+    font-size: var(--t-xs);
+    line-height: 1.4;
+    color: var(--ink-2);
+  }
+
+  /* §3 -- one line, collapsed, expanding to a textarea on the same page.
+     `position: absolute` is what keeps the promise that expanding it does not
+     shift the names: the textarea is taken out of flow and drawn over the
+     space the navigation row already reserves, so nothing above it moves and
+     the page does not grow. */
+  details > summary {
+    font-size: var(--t-sm);
+    line-height: 1.5;
+    color: var(--ink-2);
+    cursor: pointer;
+    list-style: none;
+    padding: 8px 0;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+  details > summary::-webkit-details-marker { display: none; }
+  #note { position: relative; }
+  #note > .note-body {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 44px;
+    background: var(--bg);
+  }
+  textarea {
+    width: 100%;
+    height: 64px;
+    font-family: var(--sans);
+    font-size: var(--t-sm);
+    line-height: 1.5;
+    padding: 8px;
+    margin: 0;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    resize: none;
+  }
+
+  /* Back, the early-return link, Next. The keyboard hint used to be in here
+     too, wrapped to three lines between two buttons and colliding with both.
+     It is beside the controls it describes now, and this row is three
+     controls with room around them. */
+  .nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+  }
+  .nav > button { min-width: 96px; }
+  /* A third control would crowd the row on a phone, so leaving early is a
+     link rather than a button. It is 44px tall like everything else. */
+  .linky {
+    border: 1px solid transparent;
+    color: var(--accent);
+    background: var(--bg);
+    font-size: var(--t-sm);
+    line-height: 1.5;
+    text-align: right;
+    padding: 8px 0;
+  }
+  /* One line. Wrapped, it read as two ragged lines between two buttons; and
+     `nowrap` makes a label that no longer fits show up as an overflow failure
+     rather than silently restacking the row. */
+  .nav > .linky { white-space: nowrap; }
+
+
+  /* ==================================================================
+     §9 -- mobile is the primary target. Designed at 390px, then widened.
+     ================================================================== */
+  /* The two keyboard hints. Shown together, and only where a keyboard is
+     likely and the screen has the room: a 640px-wide viewport 400px tall is a
+     phone on its side. */
+  @media (min-width: 640px) and (min-height: 600px) {
+    .key { display: inline; }
+    .keys {
+      display: block;
+      font-size: var(--t-xs);
+      line-height: 1.4;
+      color: var(--ink-2);
+    }
+  }
+  /* A short portrait screen -- 360x640 is the smallest §14 asks for -- has 85
+     spare pixels and §3's placement rule needs 68 of them. There is nothing
+     left for the second spacer, so it goes, and the note opens *upward*
+     instead: without the spacer beneath it the note sits against the
+     navigation row, and an overlay drawn downward would cover Back and Next.
+     Drawn upward it covers the spare space and the question a rater has just
+     answered, which is the right thing to cover while they are typing. */
+  @media (max-height: 700px) and (min-height: 521px) {
+    .stretch-1 { display: none; }
+    #note > .note-body { top: auto; bottom: 44px; }
+  }
+
+  @media (max-width: 639px) {
+    /* §6 -- page padding 32 desktop, 16 below 640px. */
+    .screen { padding: 16px; }
+    /* The roomier navigation row is a desktop affordance. At 360px the same
+       gap put 361px of content in a 360px viewport. */
+    .nav { gap: 8px; }
+    .align-name { font-size: var(--t-name-m); }
+    #screen-rate .question > h2 { font-size: var(--t-sm); line-height: 1.5; }
+  }
+  /* Landscape on a phone. §9 says the names shrink to `--t-sm` rather than
+     the layout scrolling, and the band around them comes down with them: 96px
+     of margin around a 13px name is most of a 390px-tall screen.
+
+     Measured, that is not enough on its own. With the names at `--t-sm` a
+     real landscape phone -- 844×390, 812×375, 740×360 -- still had **437px of
+     content in a 390px viewport**. So the two questions sit side by side in
+     landscape as well. That is a deviation from §3's vertical order, taken
+     because §3's other rule is "no scrolling within an item, ever, at any
+     width", and of the two that is the one a rater feels 150 times. It is
+     recorded in `JOURNAL.md` rather than left as a silent liberty.
+
+     The threshold is on width as well as height: two columns need the room,
+     and the narrowest phone that exists in landscape is 568px. */
+  @media (max-height: 520px) {
+    .align-name { font-size: var(--t-sm); line-height: 1.5; }
+    #names { margin: 8px 0; }
+    #names .alignment { gap: 4px; }
+    #screen-rate .question > h2 { font-size: var(--t-sm); line-height: 1.5; }
+    .item { gap: 8px; }
+    .nav { padding: 0 16px 8px; }
+    /* §4's amended headroom is 16px, and a 320px-tall landscape screen does
+       not have it to give: with it the item was 338px tall in 320px. */
+    .topbar { padding: 0 16px; }
+    .strip { padding: 0; }
+    /* The index control is 44px tall and sits in the header, which costs the
+       strip 27px it did not previously use. A 320px-tall landscape screen
+       does not have 27px spare, so it is reclaimed here rather than the
+       control being shrunk below the 44px tap target §9 requires, or moved
+       somewhere a rater would have to learn twice. Every value stays on the
+       4px scale. */
+    #names { margin: 0; }
+    .item { gap: 4px; }
+    .nav { padding: 0 16px; }
+    /* The note is drawn over the space below its summary, so its height is
+       the last thing between an open note and a scrollbar on a short screen. */
+    /* Back to 48: at 32 it is an interactive element under the 44px tap
+       target §9 requires, which is a worse trade than a tighter question
+       gap. */
+    #note textarea { height: 48px; }
+    .question { gap: 4px; }
+  }
+  @media (max-height: 520px) and (min-width: 520px) {
+    .item {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      align-content: start;
+    }
+    #names, #note { grid-column: 1 / -1; }
+    /* There is no spare height in landscape, and a spacer that became a grid
+       cell would sit beside a question rather than above it. */
+    .stretch { display: none; }
+  }
+
+  /* ==================================================================
+     §8 -- motion. The 120ms interactive transitions and nothing else.
+     `prefers-reduced-motion` disables them; it does not disable
+     auto-advance, which is a workflow behaviour rather than decoration.
+     ================================================================== */
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+
+  /* ==================================================================
+     Form controls -- the demographics screen.
+
+     `appearance: none` because a user-agent select paints a border colour, a
+     background and a font size that are on none of these scales, and none of
+     them appear in this stylesheet.
+     ================================================================== */
+  label { display: block; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  select, input[type=text] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 100%;
+    min-height: 44px;
+    font-family: var(--sans);
+    font-size: var(--t-base);
+    line-height: 1.6;
+    padding: 8px 12px;
+    margin: 0;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  select:focus, input[type=text]:focus { border-color: var(--border-strong); }
+
+  /* ITEM_INDEX.md §2 -- a grid of 150 numbered cells. Six columns at 360px,
+     more as width allows; every cell at least 44px square and 8 apart.
+
+     The three states are distinguishable **without colour**: a fill, a
+     thicker bottom edge, and neither. `DESIGN.md` §14 requires every
+     colour-carried meaning to be carried by something else as well, and here
+     the something else is the edge -- a legend naming the states in words is
+     the third carrier. */
+  #index-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+  }
+  @media (min-width: 480px) { #index-grid { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
+  @media (min-width: 640px) { #index-grid { grid-template-columns: repeat(10, minmax(0, 1fr)); } }
+  .index-cell {
+    min-height: 44px;
+    padding: 8px 4px;
+    font-size: var(--t-sm);
+    line-height: 1.5;
+    text-align: center;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--ink-2);
+  }
+  .index-cell.is-answered {
+    background: var(--surface);
+    color: var(--ink);
+  }
+  .index-cell.is-part {
+    border-bottom: 2px solid var(--border-strong);
+  }
+  .index-cell.is-current {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  /* The one view exempt from the item screen's no-scrolling rule: 150 cells
+     do not fit in a phone, and the alternative is hiding some of them. */
+  #screen-index { min-height: auto; }
+
+  /* §3 -- one row per unanswered pair, tappable, showing both names. An
+     item number means nothing to a rater; the names are how they recognise
+     the pair they skipped. */
+  .review-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    width: 100%;
+    text-align: left;
+    margin-bottom: 8px;
+    padding: 12px 16px;
+  }
+  .review-names { font-size: var(--t-base); color: var(--ink); }
+  #review-list { display: block; }
+
+  /* The read-back panels. Taller than the item screen's note, because the
+     point of them is that a rater can actually read what they are sending.
+     Neither screen has the item screen's no-scroll rule. */
+  #screen-done details, #screen-early details { margin-top: 16px; }
+  #return-routes, #early-return { display: block; }
+</style>
+
+<!-- ==================================================================
+     1. The participant statement -- §5. Five short paragraphs, one button.
+
+     The five are assembled from PARTICIPANT_STATEMENT at render time rather
+     than typed here, so the words a rater consents to are the protocol's
+     words and only the paragraphing is the design's. A sentence added or
+     dropped in `survey_instrument.py` moves this screen with it.
+     ================================================================== -->
+<section id="screen-consent" class="screen">
+  <div class="column">
+    <h1>Drug name similarity — a study for pharmacists</h1>
+    <div id="statement" class="prose"></div>
+    <div class="row">
+      <button id="consent" class="primary">I understand — begin</button>
+    </div>
+    <button id="autoadvance" class="linky" aria-pressed="true"></button>
+    <details>
+      <summary>What these names are, and where they come from</summary>
+      <div id="about-dataset" class="small muted prose"></div>
+    </details>
+  </div>
+</section>
+
+<!-- 2. Three questions, all skippable -- §6 -->
+<section id="screen-about" class="screen" hidden>
+  <div class="column">
+    <h1>Three optional questions</h1>
+    <p class="small muted prose">All optional. They are used only to describe
+    the group of raters in aggregate. No name, employer or email is collected.</p>
+    <label class="field">Years in practice
+      <select id="years">
+        <option value="">Prefer not to say</option>
+        <option>less than 2</option>
+        <option>2 to 5</option>
+        <option>6 to 10</option>
+        <option>11 to 20</option>
+        <option>more than 20</option>
+      </select>
+    </label>
+    <label class="field">Practice setting
+      <select id="setting">
+        <option value="">Prefer not to say</option>
+        <option>hospital</option>
+        <option>community</option>
+        <option>other</option>
+      </select>
+    </label>
+    <label class="field">Languages you use at work
+      <input type="text" id="languages" autocomplete="off"
+             placeholder="Prefer not to say">
+    </label>
+    <div class="row">
+      <button id="about-next" class="primary">Continue</button>
+      <button id="about-skip">Skip all three</button>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     3. One pair at a time -- §3. The only screen that matters.
+     ================================================================== -->
+<section id="screen-rate" hidden>
+  <div class="topbar">
+    <div class="track"><div id="bar-fill"></div></div>
+    <div class="strip">
+      <button id="open-index" class="linky">All pairs</button>
+      <span id="milestone"></span>
+      <span id="saved" hidden>saved</span>
+      <span id="progress"></span>
+    </div>
+  </div>
+
+  <div class="item">
+    <div id="names"></div>
+    <div class="stretch stretch-2"></div>
+
+    <div class="question">
+      <h2>Have you seen these two confused, or nearly confused, in practice?</h2>
+      <div class="choices" id="seen">
+        <button data-value="yes" aria-pressed="false">Yes<span class="key">y</span></button>
+        <button data-value="no" aria-pressed="false">No<span class="key">n</span></button>
+        <button data-value="unsure" aria-pressed="false">Unsure<span class="key">u</span></button>
+      </div>
+    </div>
+
+    <div class="question">
+      <h2>How easily could these two be confused in writing or speech?</h2>
+      <div class="choices" id="rating">
+        <button data-value="1" aria-pressed="false">1</button>
+        <button data-value="2" aria-pressed="false">2</button>
+        <button data-value="3" aria-pressed="false">3</button>
+        <button data-value="4" aria-pressed="false">4</button>
+        <button data-value="5" aria-pressed="false">5</button>
+      </div>
+      <div class="ends">
+        <span class="ends-label">not at all</span>
+        <span class="ends-label">very easily</span>
+        <span id="rating-locked">Answer the first question to continue.</span>
+      </div>
+      <p class="keys">Keyboard: y, n or u for the first question, 1 to 5 for
+      this one, Enter for the next pair, Backspace to go back.</p>
+    </div>
+
+    <details id="note">
+      <summary>Add a note (optional)</summary>
+      <div class="note-body">
+        <textarea id="comment"
+          placeholder="Anything that would make the confusion more or less likely."></textarea>
+      </div>
+    </details>
+    <div class="stretch stretch-1"></div>
+  </div>
+
+  <div class="nav">
+    <button id="back">Back</button>
+    <button id="early-open" class="linky">Send what I have</button>
+    <button id="next" class="primary">Next</button>
+  </div>
+</section>
+
+<!-- 4. Stopping early -- EASIER_RETURN.md §6. All three routes, at any point.
+     Its own screen rather than a panel on the item screen, because §3 fixes
+     what is on that screen and nothing scrolls there. -->
+<section id="screen-early" class="screen" hidden>
+  <div class="column">
+    <h1>Send what you have</h1>
+    <p id="early-summary" class="prose"></p>
+    <div id="early-return">
+      <div class="row">
+        <a class="button primary route-email" href="#">Email what I have</a>
+        <button id="early-copy">Copy</button>
+        <button id="early-download">Download a file</button>
+      </div>
+      <p class="small muted route-note prose"></p>
+    </div>
+    <div class="row">
+      <button id="early-back">Back to the pairs</button>
+    </div>
+  </div>
+</section>
+
+<!-- 4a. The item index -- ITEM_INDEX.md. Numbers and answer status, never
+     names. A rater who can see all 150 pairs at once starts rating them
+     relatively rather than judging each on its own, which is a different
+     measurement from the one the protocol specifies and would be invisible in
+     the results. Amendment 13 records that as a protocol decision. -->
+<section id="screen-index" class="screen" hidden>
+  <div class="column">
+    <h1>All pairs</h1>
+    <p id="index-count" class="prose"></p>
+    <div id="index-grid" role="list"></div>
+    <p class="xs muted" id="index-legend">
+      A filled cell is answered. A cell with a thicker bottom edge has the
+      first question answered only. A plain cell is unanswered. The pair you
+      were on is outlined.
+    </p>
+    <div class="row">
+      <button id="index-back" class="primary">Back to where I was</button>
+    </div>
+  </div>
+</section>
+
+<!-- 4b. The review screen -- NAVIGATION.md §3. Reached after the last item
+     when anything is unanswered. The return options are deliberately absent:
+     this is the one place the app asks for completeness, rather than asking
+     150 times. -->
+<section id="screen-review" class="screen" hidden>
+  <div class="column">
+    <h1 id="review-heading"></h1>
+    <p class="prose">Each one jumps to that pair. Your other answers are
+    saved.</p>
+    <div id="review-list"></div>
+    <!-- §4. Quiet and unstyled, and it has to exist: a rater who genuinely
+         cannot answer one pair and cannot submit is trapped, which is the
+         failure the hard time-block was rejected for. -->
+    <p class="small"><button id="review-finish" class="linky">I&rsquo;d rather
+    finish here &mdash; send what I have</button></p>
+  </div>
+</section>
+
+<!-- 5. Done -- §7 -->
+<section id="screen-done" class="screen" hidden>
+  <div class="column">
+    <h1>Thank you</h1>
+
+    <!-- Amendment 11. One prompt, shown once, blocking nothing. Neither
+         button is styled as a warning: the rater has not done anything
+         wrong, and a page that accuses them of rushing will get a worse
+         answer to every question after it. -->
+    <div class="panel" id="fast-prompt" hidden>
+      <p>You&rsquo;ve finished faster than we&rsquo;d expect for 150 pairs. If
+      you&rsquo;d like to look at any again, you can go back. If you&rsquo;re
+      happy with your answers, continue.</p>
+      <div class="row">
+        <button id="fast-back">Go back</button>
+        <button id="fast-continue">Continue</button>
+      </div>
+    </div>
+
+    <p id="done-summary" class="prose"></p>
+
+    <div id="return-routes">
+      <div class="row">
+        <a id="email" class="button primary route-email" href="#">Email my results</a>
+        <button id="copy">Copy my results</button>
+        <button id="download">Download a file</button>
+      </div>
+      <p class="small muted route-note prose" id="route-note"></p>
+      <p class="small muted prose" id="copy-confirm" hidden>Copied. Paste it into
+      an email to <strong class="return-address"></strong> and send.</p>
+      <!-- No payload panel, and no preview of one. TIMING.md §C2: the compact
+           string is never rendered on screen, on any view. A rater who meets a
+           wall of characters tidies it up, truncates it or reflows it, and the
+           damage is silent. What replaces it is §C4's sentence below, because
+           concealing the encoding is fine and concealing what is in it is
+           not. -->
+      <p class="small muted prose">Your response contains only your answers,
+      the optional background questions, and the timing described on the first
+      screen. It carries no drug names — the list of pairs is fixed, so their
+      positions are enough — and no name, employer or contact details.</p>
+    </div>
+
+    <p class="prose">Thank you for the time. Whichever route you use, it goes to
+    <strong class="return-address" id="return-address"></strong>.</p>
+
+    <details>
+      <summary>Start again from the beginning</summary>
+      <p class="small muted prose">This clears the answers saved in this browser
+      and cannot be undone.</p>
+      <div class="row"><button id="reset">Clear and start again</button></div>
+    </details>
+  </div>
+</section>
+
+<!-- Resume prompt -->
+<section id="screen-resume" class="screen" hidden>
+  <div class="column">
+    <h1>Welcome back</h1>
+    <p id="resume-summary" class="prose"></p>
+    <div class="row">
+      <button id="resume" class="primary">Continue where I left off</button>
+      <button id="restart">Start again</button>
+    </div>
+  </div>
+</section>
+
+<script>/*
+ * Two names, aligned character by character. (BUILD.md G2)
+ *
+ * The one place in either tool worth spending design effort: the meaning is
+ * carried by the character grid, so the grid has to be right and everything
+ * around it stays plain.
+ *
+ *     C H L O R P R O P A M I D E
+ *     C H L O R P R O M A Z I N E
+ *               ▔▔▔▔▔▔▔ ▔▔▔▔▔▔▔▔▔
+ *     K L R P R P M T
+ *     K L R P R M S N
+ *
+ * **Two configurations, and the difference is not cosmetic.** The name
+ * checker marks divergence and shows the phonetic rows. The rating app shows
+ * the two names and nothing else: marking where they differ would tell a
+ * rater what to look at, which is the judgement the study is asking them to
+ * make. `alignmentRows(a, b, {marking: false, phonetics: false})` returns a
+ * structure with no marks and no codes in it at all, rather than a structure
+ * carrying them and a renderer that declines to draw them.
+ *
+ * Alignment is Needleman-Wunsch: match +1, mismatch -1, gap -1, ties resolved
+ * toward a diagonal so that equal-length names align without gaps. That keeps
+ * it sane when the names are very different lengths -- the shorter one gets
+ * gaps rather than the grid losing its columns.
+ */
+(function (global) {
+  'use strict';
+
+  var GAP = ' ';          // a non-breaking space, so a gap holds its column
+  var MARK = '▔';         // ▔, the overline used for the divergence row
+  var MATCH_SCORE = 1;
+  var MISMATCH_SCORE = -1;
+  var GAP_SCORE = -1;
+
+  /** Align two strings, returning the gap-padded rows. */
+  function align(a, b) {
+    a = String(a); b = String(b);
+    var rows = a.length + 1, cols = b.length + 1;
+    var score = [], from = [];
+    for (var i = 0; i < rows; i++) {
+      score.push(new Array(cols).fill(0));
+      from.push(new Array(cols).fill(''));
+    }
+    for (var r = 1; r < rows; r++) { score[r][0] = r * GAP_SCORE; from[r][0] = 'up'; }
+    for (var c = 1; c < cols; c++) { score[0][c] = c * GAP_SCORE; from[0][c] = 'left'; }
+
+    for (var y = 1; y < rows; y++) {
+      for (var x = 1; x < cols; x++) {
+        var same = a.charAt(y - 1) === b.charAt(x - 1);
+        var diagonal = score[y - 1][x - 1] + (same ? MATCH_SCORE : MISMATCH_SCORE);
+        var up = score[y - 1][x] + GAP_SCORE;
+        var left = score[y][x - 1] + GAP_SCORE;
+        var best = Math.max(diagonal, up, left);
+        score[y][x] = best;
+        // Diagonal first, so equal-length names align without gaps.
+        from[y][x] = best === diagonal ? 'diag' : (best === up ? 'up' : 'left');
+      }
+    }
+
+    var topRow = [], bottomRow = [];
+    var py = a.length, px = b.length;
+    while (py > 0 || px > 0) {
+      var step = from[py][px];
+      if (py === 0) step = 'left';
+      else if (px === 0) step = 'up';
+      if (step === 'diag') {
+        topRow.push(a.charAt(py - 1)); bottomRow.push(b.charAt(px - 1));
+        py--; px--;
+      } else if (step === 'up') {
+        topRow.push(a.charAt(py - 1)); bottomRow.push(GAP);
+        py--;
+      } else {
+        topRow.push(GAP); bottomRow.push(b.charAt(px - 1));
+        px--;
+      }
+    }
+    topRow.reverse(); bottomRow.reverse();
+    return { a: topRow, b: bottomRow };
+  }
+
+  /**
+   * The rows a renderer draws.
+   *
+   * `options.marking` adds a `marks` row; `options.phonetics` adds aligned
+   * phonetic rows. **Both default to false**, so a caller that forgets to
+   * think about it gets the blinded configuration rather than the revealing
+   * one.
+   */
+  function alignmentRows(a, b, options) {
+    options = options || {};
+    // `plain` lays both names out in the same monospaced grid without
+    // computing an alignment at all. The rating app uses it, and the reason
+    // is the same one that keeps the marks off: inserted gaps say where the
+    // insertions and deletions are, which is part of the judgement a rater is
+    // being asked to make. "The two names only" is taken literally.
+    var aligned = options.plain
+      ? { a: String(a).split(''), b: String(b).split('') }
+      : align(a, b);
+    var rows = { a: aligned.a, b: aligned.b };
+    if (options.plain) return rows;
+
+    if (options.marking) {
+      rows.marks = aligned.a.map(function (ch, i) {
+        return ch === aligned.b[i] ? GAP : MARK;
+      });
+    }
+    if (options.phonetics) {
+      if (!global.LASA || !global.LASA.doubleMetaphone) {
+        throw new Error('phonetic rows need lasa-metrics.js loaded first');
+      }
+      var codeA = global.LASA.doubleMetaphone(a)[0];
+      var codeB = global.LASA.doubleMetaphone(b)[0];
+      var phonetic = align(codeA, codeB);
+      rows.codeA = phonetic.a;
+      rows.codeB = phonetic.b;
+    }
+    return rows;
+  }
+
+  var CLASSES = {
+    a: 'align-name', b: 'align-name',
+    marks: 'align-marks', codeA: 'align-code', codeB: 'align-code',
+  };
+  var ORDER = ['a', 'b', 'marks', 'codeA', 'codeB'];
+
+  /** Render into `container`, replacing whatever is there. */
+  function renderAlignment(container, a, b, options) {
+    var rows = alignmentRows(a, b, options);
+    container.textContent = '';
+    var grid = document.createElement('div');
+    grid.className = 'alignment';
+    ORDER.forEach(function (key) {
+      if (!rows[key]) return;
+      var line = document.createElement('div');
+      line.className = CLASSES[key];
+      rows[key].forEach(function (ch) {
+        var cell = document.createElement('span');
+        cell.className = 'align-cell';
+        // The divergence row is an underline, not a coloured glyph: colour
+        // must never carry a meaning on its own, and a character drawn in red
+        // does exactly that. `alignmentRows` still returns MARK and GAP -- the
+        // pure function is unchanged and so is everything asserting on it --
+        // and only the rendering differs.
+        if (key === 'marks') {
+          if (ch === MARK) cell.className += ' is-diff';
+          cell.textContent = '';
+          line.appendChild(cell);
+          return;
+        }
+        cell.textContent = ch;
+        line.appendChild(cell);
+      });
+      grid.appendChild(line);
+    });
+    container.appendChild(grid);
+    return rows;
+  }
+
+  /* ------------------------------------------------------- Tall Man lettering
+
+     `chlorproPAMIDE` / `chlorproMAZINE`. Capitals on the part that differs,
+     lower case on the part the two names share.
+
+     This is the one intervention in the whole project a hospital pharmacy can
+     apply without software, budget or approval: it is a way of writing a
+     label. That is what makes a register usable rather than merely
+     informative, and it is also why the rules below refuse more often than
+     they accept.
+
+     ## Longest common prefix and suffix, not the alignment
+
+     REPURPOSE.md §4 says to derive this from the alignment the display already
+     computes and not to implement a second diff. **It is computed from the
+     longest common prefix and suffix instead**, on the operator's instruction
+     and for a measurable reason: the alignment is Needleman-Wunsch, it finds
+     matching characters wherever they fall, and for `ERYTHROMYCIN` against
+     `AZITHROMYCIN` it matches enough of the middle that the differing span
+     runs almost to the end -- `ERYTHROMYcin` / `AZITHROMYcin`, three quarters
+     capitalised. Common prefix and suffix give `ERYthromycin` /
+     `AZIthromycin`, which is what ISMP publishes.
+
+     The two answer different questions. The alignment answers *where do these
+     names correspond*, which is what the display is for. Tall Man asks *what
+     is the shared stem and what hangs off it*, and a stem is a prefix.
+
+     ## The refusals, which matter more than the renderings
+
+       * **A single differing character gets nothing.** `AMLOPIN`/`AMLODIN` as
+         `amloPin`/`amloDin` draws the eye to a letter rather than a syllable.
+         Decided on the raw difference, before the run is widened.
+       * **A shared region under three characters gets nothing.** Two names
+         that barely overlap end up almost entirely capitalised, which is
+         SHOUTING and carries no information.
+       * **More than 70% capitals gets nothing.** §4 does not ask for this and
+         the measurement did: without it, 101 of 226 rendered names were more
+         than half capitals and `levETIRACETAM`/`levOCETIRIZINE` reached 79%.
+         70% is where published practice sits -- `metOPROLOL` is 7 capitals in
+         10 letters, exactly 70% -- so the cap admits ISMP's own renderings and
+         excludes the ones §4's reasoning objects to.
+       * **A shared prefix or suffix under three characters is absorbed** into
+         the capitalised run rather than left in lower case. `CHLORPROPAMIDE`
+         and `CHLORPROMAZINE` share a trailing `E`; left alone it renders
+         `chlorproPAMIDe`, which reads as a typo. Three characters is the
+         threshold §4 already sets for a shared region being worth keeping,
+         applied per end -- a one- or two-letter stem steadies nothing.
+
+     In every refusing case the caller gets a `reason`, so a page can say why
+     there is no suggestion instead of leaving a blank that reads as an
+     oversight.
+
+     ## What this is not
+
+     Nothing here is expert-reviewed, and `outputs/tallman_validation.json`
+     measures the gap against ISMP's published renderings. Published lists
+     encode a judgement about which segment *distinguishes*, not merely which
+     one differs: ISMP writes `cefTRIAXone`/`cefOTAXime`, leaving `one` and
+     `ime` in lower case because the distinguishing syllable ends before them.
+     No rule over character differences recovers that. */
+
+  //: More than this share of capitals and the rendering is harder to read
+  //: than the name. `metOPROLOL` is 7 in 10, which published practice accepts.
+  var TALL_MAN_MAX_CAPS = 0.70;
+
+  //: Below this, a shared prefix or suffix is too short to steady the eye:
+  //: a one- or two-letter stem is not one a reader can hold on to.
+  //:
+  //: (The obvious word for that is also one of the survey's six queue labels,
+  //: and this file is inlined verbatim into the blinded rating app, whose
+  //: bytes are checked for all six. Naming it differently costs nothing and
+  //: keeps that check strict.)
+  var TALL_MAN_MIN_STEM = 3;
+
+  function commonPrefix(a, b) {
+    var i = 0, n = Math.min(a.length, b.length);
+    while (i < n && a.charAt(i) === b.charAt(i)) i++;
+    return i;
+  }
+
+  function commonSuffix(a, b, limit) {
+    var i = 0, n = Math.min(a.length, b.length) - limit;
+    while (i < n && a.charAt(a.length - 1 - i) === b.charAt(b.length - 1 - i)) i++;
+    return i;
+  }
+
+  function capitalisedShare(rendered) {
+    var letters = 0, capitals = 0;
+    for (var i = 0; i < rendered.length; i++) {
+      var ch = rendered.charAt(i);
+      if (ch.toUpperCase() === ch.toLowerCase()) continue;   // not a letter
+      letters++;
+      if (ch === ch.toUpperCase()) capitals++;
+    }
+    return letters ? capitals / letters : 0;
+  }
+
+  function tallMan(a, b) {
+    a = String(a);
+    b = String(b);
+    function refuse(reason) { return { ok: false, reason: reason, a: a, b: b }; }
+
+    if (!a.length || !b.length) return refuse('one of the names is empty');
+    if (a.toUpperCase() === b.toUpperCase()) {
+      return refuse('the two names are identical once normalised');
+    }
+
+    var prefix = commonPrefix(a, b);
+    // The suffix may not run back into the prefix, or a name that is a
+    // rotation of the other would report more shared characters than it has.
+    var suffix = commonSuffix(a, b, prefix);
+
+    // Decided on the difference as found, before either end is absorbed
+    // below. Widening first would let `ATENOLOL`/`ATENOLAL` -- one character
+    // apart, O against A -- render as `atenolOL`/`atenolAL`, the exact thing
+    // §4 forbids, reached by a rule meant for something else.
+    if (Math.max(a.length, b.length) - prefix - suffix <= 1) {
+      return refuse('the two names differ by a single character, and a '
+        + 'capital on one letter is harder to read than the name itself');
+    }
+
+    if (prefix < TALL_MAN_MIN_STEM) prefix = 0;
+    if (suffix < TALL_MAN_MIN_STEM) suffix = 0;
+
+    var shared = prefix + suffix;
+    if (shared < TALL_MAN_MIN_STEM) {
+      return refuse('the two names share fewer than ' + TALL_MAN_MIN_STEM
+        + ' characters, so almost every letter would be capitalised');
+    }
+
+    function render(name) {
+      return name.slice(0, prefix).toLowerCase()
+        + name.slice(prefix, name.length - suffix).toUpperCase()
+        + (suffix ? name.slice(name.length - suffix).toLowerCase() : '');
+    }
+    var renderedA = render(a), renderedB = render(b);
+    var share = Math.max(capitalisedShare(renderedA), capitalisedShare(renderedB));
+    if (share > TALL_MAN_MAX_CAPS + 1e-9) {
+      return refuse('it would capitalise ' + Math.round(share * 100)
+        + '% of the name, and past ' + Math.round(TALL_MAN_MAX_CAPS * 100)
+        + '% the rendering is harder to read than the name itself');
+    }
+
+    return {
+      ok: true,
+      a: renderedA,
+      b: renderedB,
+      prefix: a.slice(0, prefix).toLowerCase(),
+      suffix: suffix ? a.slice(a.length - suffix).toLowerCase() : '',
+      differing_a: a.slice(prefix, a.length - suffix).toUpperCase(),
+      differing_b: b.slice(prefix, b.length - suffix).toUpperCase(),
+      shared: shared,
+      capitalised_share: share,
+    };
+  }
+
+  var LASA_ALIGN = {
+    GAP: GAP,
+    MARK: MARK,
+    align: align,
+    alignmentRows: alignmentRows,
+    tallMan: tallMan,
+    renderAlignment: renderAlignment,
+  };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = LASA_ALIGN;
+  global.LASA_ALIGN = LASA_ALIGN;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+"use strict";
+/* Injected by the builder: the instrument, and nothing else about it. */
+var INSTRUMENT = [
+ {
+  "pair_id": "P001",
+  "name_a": "ATENOVA",
+  "name_b": "TROVA"
+ },
+ {
+  "pair_id": "P002",
+  "name_a": "CLOT XLM",
+  "name_b": "XKLOT"
+ },
+ {
+  "pair_id": "P003",
+  "name_a": "GLYFINE",
+  "name_b": "GLYPH CV"
+ },
+ {
+  "pair_id": "P004",
+  "name_a": "EDEMASE D",
+  "name_b": "EDICOLD D"
+ },
+ {
+  "pair_id": "P005",
+  "name_a": "PERINOL",
+  "name_b": "PERMICER"
+ },
+ {
+  "pair_id": "P006",
+  "name_a": "GLUTAMMUNE",
+  "name_b": "GLUTAMUNE"
+ },
+ {
+  "pair_id": "P007",
+  "name_a": "NILOTINIB",
+  "name_b": "NIRAPARIB"
+ },
+ {
+  "pair_id": "P008",
+  "name_a": "QUPER",
+  "name_b": "VOPER"
+ },
+ {
+  "pair_id": "P009",
+  "name_a": "BLUEGEL SF",
+  "name_b": "BLUPOD OF"
+ },
+ {
+  "pair_id": "P010",
+  "name_a": "AKT",
+  "name_b": "MOXICARE KT"
+ },
+ {
+  "pair_id": "P011",
+  "name_a": "AKT",
+  "name_b": "LOXCIP KT"
+ },
+ {
+  "pair_id": "P012",
+  "name_a": "CAFIDOL DX",
+  "name_b": "CORICO DX"
+ },
+ {
+  "pair_id": "P013",
+  "name_a": "KVI",
+  "name_b": "MI"
+ },
+ {
+  "pair_id": "P014",
+  "name_a": "CARFILNAT",
+  "name_b": "CILNILOR T"
+ },
+ {
+  "pair_id": "P015",
+  "name_a": "KABIMETHATE 1MIU",
+  "name_b": "KABIMETHATE 2MIU"
+ },
+ {
+  "pair_id": "P016",
+  "name_a": "RAPICURE",
+  "name_b": "RAPPICURE"
+ },
+ {
+  "pair_id": "P017",
+  "name_a": "MH",
+  "name_b": "O2H"
+ },
+ {
+  "pair_id": "P018",
+  "name_a": "PAR SPAS",
+  "name_b": "STUPAR"
+ },
+ {
+  "pair_id": "P019",
+  "name_a": "D LIT",
+  "name_b": "LISPAS D"
+ },
+ {
+  "pair_id": "P020",
+  "name_a": "BECLORICH",
+  "name_b": "BEUDE EACH"
+ },
+ {
+  "pair_id": "P021",
+  "name_a": "FLEEMON MZ",
+  "name_b": "MONTEMON"
+ },
+ {
+  "pair_id": "P022",
+  "name_a": "VELIPARIB",
+  "name_b": "VEMURAFENIB"
+ },
+ {
+  "pair_id": "P023",
+  "name_a": "DIL SE MG 10",
+  "name_b": "DUPEN S MG 250 MG 10"
+ },
+ {
+  "pair_id": "P024",
+  "name_a": "BLADMIR S",
+  "name_b": "BLEXONE S"
+ },
+ {
+  "pair_id": "P025",
+  "name_a": "COAGULATION FACTOR VIIA",
+  "name_b": "COAGULATION FACTOR VIII"
+ },
+ {
+  "pair_id": "P026",
+  "name_a": "PREDNISOLONE",
+  "name_b": "PREDNISONE"
+ },
+ {
+  "pair_id": "P027",
+  "name_a": "TRINEUROSOL HP",
+  "name_b": "TRINUROSOL HP"
+ },
+ {
+  "pair_id": "P028",
+  "name_a": "MIFYRON",
+  "name_b": "MIGON"
+ },
+ {
+  "pair_id": "P029",
+  "name_a": "ASPHYLIN",
+  "name_b": "ASPHYLLIN"
+ },
+ {
+  "pair_id": "P030",
+  "name_a": "KRALBAC O",
+  "name_b": "KRIP CEF O"
+ },
+ {
+  "pair_id": "P031",
+  "name_a": "CHLORMOYCETIN",
+  "name_b": "CHLORMYCETIN"
+ },
+ {
+  "pair_id": "P032",
+  "name_a": "AGEFLUX OLX",
+  "name_b": "AGELITE DX"
+ },
+ {
+  "pair_id": "P033",
+  "name_a": "METHAZOLAMIDE",
+  "name_b": "METOLAZONE"
+ },
+ {
+  "pair_id": "P034",
+  "name_a": "NAPIRA SA",
+  "name_b": "NEBIMAX SA"
+ },
+ {
+  "pair_id": "P035",
+  "name_a": "WOKLAV",
+  "name_b": "ZILAV"
+ },
+ {
+  "pair_id": "P036",
+  "name_a": "ASCORIL LS JUNIOR",
+  "name_b": "PGI JUNIOR MG 125"
+ },
+ {
+  "pair_id": "P037",
+  "name_a": "PAPAVERINE",
+  "name_b": "PAVLOZIDE"
+ },
+ {
+  "pair_id": "P038",
+  "name_a": "AZEE DRY",
+  "name_b": "TELZEE"
+ },
+ {
+  "pair_id": "P039",
+  "name_a": "ALFLAZ",
+  "name_b": "TELFLAG"
+ },
+ {
+  "pair_id": "P040",
+  "name_a": "SERAFLAM",
+  "name_b": "SERRAFLAM"
+ },
+ {
+  "pair_id": "P041",
+  "name_a": "DV3",
+  "name_b": "O3"
+ },
+ {
+  "pair_id": "P042",
+  "name_a": "AMPHOTRET",
+  "name_b": "AMPINE AT"
+ },
+ {
+  "pair_id": "P043",
+  "name_a": "CEFEDGE C",
+  "name_b": "COLDGESIC"
+ },
+ {
+  "pair_id": "P044",
+  "name_a": "AUGMENTIN DDS",
+  "name_b": "ODDS UP"
+ },
+ {
+  "pair_id": "P045",
+  "name_a": "METFORMIN",
+  "name_b": "METRONIDAZOLE"
+ },
+ {
+  "pair_id": "P046",
+  "name_a": "NASICORITN",
+  "name_b": "NORZON TN"
+ },
+ {
+  "pair_id": "P047",
+  "name_a": "COAGULATION FACTOR IX",
+  "name_b": "COAGULATION FACTOR X"
+ },
+ {
+  "pair_id": "P048",
+  "name_a": "SLEAMEF A",
+  "name_b": "SLOWTUS A"
+ },
+ {
+  "pair_id": "P049",
+  "name_a": "JORONAC",
+  "name_b": "SAFRONAC"
+ },
+ {
+  "pair_id": "P050",
+  "name_a": "EVINACUMAB",
+  "name_b": "EVIZONE SB"
+ },
+ {
+  "pair_id": "P051",
+  "name_a": "RANITIDINE",
+  "name_b": "RIMANTADINE"
+ },
+ {
+  "pair_id": "P052",
+  "name_a": "BREEMAX F",
+  "name_b": "BRINTOP F"
+ },
+ {
+  "pair_id": "P053",
+  "name_a": "PERMEDIN C",
+  "name_b": "PERSOL AC"
+ },
+ {
+  "pair_id": "P054",
+  "name_a": "ALEX JUNIOR",
+  "name_b": "JUNICEF PZ"
+ },
+ {
+  "pair_id": "P055",
+  "name_a": "SOVACLAV CV",
+  "name_b": "SOVIHEP V"
+ },
+ {
+  "pair_id": "P056",
+  "name_a": "CRESLAUR F",
+  "name_b": "CRIMONT F"
+ },
+ {
+  "pair_id": "P057",
+  "name_a": "IMATOVA",
+  "name_b": "PRASTOVA"
+ },
+ {
+  "pair_id": "P058",
+  "name_a": "FULCOVER",
+  "name_b": "FULLCOVER"
+ },
+ {
+  "pair_id": "P059",
+  "name_a": "FALSITHEER",
+  "name_b": "FALSITHER"
+ },
+ {
+  "pair_id": "P060",
+  "name_a": "FIBERLACT",
+  "name_b": "FIBROPRIST"
+ },
+ {
+  "pair_id": "P061",
+  "name_a": "PXR",
+  "name_b": "R PAR"
+ },
+ {
+  "pair_id": "P062",
+  "name_a": "MAHACILLIN",
+  "name_b": "MAHOUT MDN"
+ },
+ {
+  "pair_id": "P063",
+  "name_a": "LEFOVIO",
+  "name_b": "TENELIVIO MF"
+ },
+ {
+  "pair_id": "P064",
+  "name_a": "KEFLOR STRAWBERRY",
+  "name_b": "SERRY D"
+ },
+ {
+  "pair_id": "P065",
+  "name_a": "UROFLAMED",
+  "name_b": "UROLUSIN D"
+ },
+ {
+  "pair_id": "P066",
+  "name_a": "KETALAR",
+  "name_b": "KETOROLAC"
+ },
+ {
+  "pair_id": "P067",
+  "name_a": "BUFLAM",
+  "name_b": "BUFLOMEDIL"
+ },
+ {
+  "pair_id": "P068",
+  "name_a": "ACOGUT",
+  "name_b": "GUTMOVE"
+ },
+ {
+  "pair_id": "P069",
+  "name_a": "SODIVAL",
+  "name_b": "VAL SP"
+ },
+ {
+  "pair_id": "P070",
+  "name_a": "LABETALOL",
+  "name_b": "LAMICTAL"
+ },
+ {
+  "pair_id": "P071",
+  "name_a": "BERRYCOLD",
+  "name_b": "BERYCOLD"
+ },
+ {
+  "pair_id": "P072",
+  "name_a": "D2H",
+  "name_b": "MH"
+ },
+ {
+  "pair_id": "P073",
+  "name_a": "DEXAMETHASONE",
+  "name_b": "DEXMEDETOMIDINE"
+ },
+ {
+  "pair_id": "P074",
+  "name_a": "OLANZAPINE",
+  "name_b": "QUETIAPINE"
+ },
+ {
+  "pair_id": "P075",
+  "name_a": "ULCER GUD",
+  "name_b": "ULCO FIT D"
+ },
+ {
+  "pair_id": "P076",
+  "name_a": "CUTILIV",
+  "name_b": "LC LIV"
+ },
+ {
+  "pair_id": "P077",
+  "name_a": "EVICEF SB",
+  "name_b": "EVINACUMAB"
+ },
+ {
+  "pair_id": "P078",
+  "name_a": "ALLEGRA",
+  "name_b": "VIAGRA"
+ },
+ {
+  "pair_id": "P079",
+  "name_a": "E VIR",
+  "name_b": "VXR"
+ },
+ {
+  "pair_id": "P080",
+  "name_a": "IMOL",
+  "name_b": "IMONT"
+ },
+ {
+  "pair_id": "P081",
+  "name_a": "A2",
+  "name_b": "CO2"
+ },
+ {
+  "pair_id": "P082",
+  "name_a": "AID AIR AB",
+  "name_b": "AIRTEC FB"
+ },
+ {
+  "pair_id": "P083",
+  "name_a": "GEFIZEN AZ",
+  "name_b": "GEFLOX OZ"
+ },
+ {
+  "pair_id": "P084",
+  "name_a": "BUTALAMINE",
+  "name_b": "BUTOCONAZOLE"
+ },
+ {
+  "pair_id": "P085",
+  "name_a": "SAXAGLIPTIN",
+  "name_b": "SITAGLIPTIN"
+ },
+ {
+  "pair_id": "P086",
+  "name_a": "CILIZOLE",
+  "name_b": "RULIZO"
+ },
+ {
+  "pair_id": "P087",
+  "name_a": "CE4",
+  "name_b": "P4"
+ },
+ {
+  "pair_id": "P088",
+  "name_a": "KERATOVIN",
+  "name_b": "VIMKER"
+ },
+ {
+  "pair_id": "P089",
+  "name_a": "GR8",
+  "name_b": "Z8"
+ },
+ {
+  "pair_id": "P090",
+  "name_a": "ELCEF DRY",
+  "name_b": "ELLCEF DRY"
+ },
+ {
+  "pair_id": "P091",
+  "name_a": "ULCER GUD",
+  "name_b": "ULCOSZOL D"
+ },
+ {
+  "pair_id": "P092",
+  "name_a": "CLONAZEPAM",
+  "name_b": "LORAZEPAM"
+ },
+ {
+  "pair_id": "P093",
+  "name_a": "CEFOTETAN",
+  "name_b": "CEFTRIAXONE"
+ },
+ {
+  "pair_id": "P094",
+  "name_a": "STARFATE O",
+  "name_b": "SURFAZ VT"
+ },
+ {
+  "pair_id": "P095",
+  "name_a": "BRUISER TZ",
+  "name_b": "BRUNOFLOX OZ"
+ },
+ {
+  "pair_id": "P096",
+  "name_a": "CANDIZOLE",
+  "name_b": "RABIZOLE D"
+ },
+ {
+  "pair_id": "P097",
+  "name_a": "CYTALAGEN",
+  "name_b": "CYTHROCIN"
+ },
+ {
+  "pair_id": "P098",
+  "name_a": "NERATINIB",
+  "name_b": "NIRAPARIB"
+ },
+ {
+  "pair_id": "P099",
+  "name_a": "LIWO ON",
+  "name_b": "ONTORON"
+ },
+ {
+  "pair_id": "P100",
+  "name_a": "ZIFLAX OZ",
+  "name_b": "ZIFPIME TZ"
+ },
+ {
+  "pair_id": "P101",
+  "name_a": "VERICIGUAT",
+  "name_b": "VERTIVERT"
+ },
+ {
+  "pair_id": "P102",
+  "name_a": "LYCEF CV",
+  "name_b": "LYCOLATE"
+ },
+ {
+  "pair_id": "P103",
+  "name_a": "ATIVAN",
+  "name_b": "VAN LM"
+ },
+ {
+  "pair_id": "P104",
+  "name_a": "KROFIX OX",
+  "name_b": "KROTUS DX"
+ },
+ {
+  "pair_id": "P105",
+  "name_a": "ALPRAZOLAM",
+  "name_b": "LORAZEPAM"
+ },
+ {
+  "pair_id": "P106",
+  "name_a": "GONADORELIN",
+  "name_b": "GONIZONE S"
+ },
+ {
+  "pair_id": "P107",
+  "name_a": "CAFNYL",
+  "name_b": "SUCAFIT O"
+ },
+ {
+  "pair_id": "P108",
+  "name_a": "ALORAB D",
+  "name_b": "WALORIT"
+ },
+ {
+  "pair_id": "P109",
+  "name_a": "ALEX JUNIOR",
+  "name_b": "JUNIOR CARE MP"
+ },
+ {
+  "pair_id": "P110",
+  "name_a": "KLINCIN A",
+  "name_b": "KLOTFREE A"
+ },
+ {
+  "pair_id": "P111",
+  "name_a": "ETRIK",
+  "name_b": "ZOLITRIK"
+ },
+ {
+  "pair_id": "P112",
+  "name_a": "CADLACTIN",
+  "name_b": "CIDLAST A"
+ },
+ {
+  "pair_id": "P113",
+  "name_a": "QUIKACE TC",
+  "name_b": "QUINOQUIN EC"
+ },
+ {
+  "pair_id": "P114",
+  "name_a": "BUTAPERAZINE",
+  "name_b": "BUTOCONAZOLE"
+ },
+ {
+  "pair_id": "P115",
+  "name_a": "CEFTMARK",
+  "name_b": "DECMARK SP"
+ },
+ {
+  "pair_id": "P116",
+  "name_a": "EVORID",
+  "name_b": "EVOXIL CV"
+ },
+ {
+  "pair_id": "P117",
+  "name_a": "CEFVERY AZ",
+  "name_b": "COFVECTOR"
+ },
+ {
+  "pair_id": "P118",
+  "name_a": "C4U",
+  "name_b": "NU"
+ },
+ {
+  "pair_id": "P119",
+  "name_a": "MEGACOB",
+  "name_b": "VEGACIP"
+ },
+ {
+  "pair_id": "P120",
+  "name_a": "BYGOCEF",
+  "name_b": "TAZOCEF"
+ },
+ {
+  "pair_id": "P121",
+  "name_a": "APTIRIZE CT",
+  "name_b": "APTONAC PT"
+ },
+ {
+  "pair_id": "P122",
+  "name_a": "CEFFINOVA",
+  "name_b": "CEFINOVA"
+ },
+ {
+  "pair_id": "P123",
+  "name_a": "CETIRIZINE",
+  "name_b": "STAVUDINE"
+ },
+ {
+  "pair_id": "P124",
+  "name_a": "METOLAR TL",
+  "name_b": "MOXOFT KTL"
+ },
+ {
+  "pair_id": "P125",
+  "name_a": "OLEA SOFT GELATIN",
+  "name_b": "REXGEST SOFT GELATIN"
+ },
+ {
+  "pair_id": "P126",
+  "name_a": "VENTIPHYLLINE",
+  "name_b": "VIEPHYL"
+ },
+ {
+  "pair_id": "P127",
+  "name_a": "ACSOBON",
+  "name_b": "MACSART"
+ },
+ {
+  "pair_id": "P128",
+  "name_a": "BILAHASTA",
+  "name_b": "BILOPINE A"
+ },
+ {
+  "pair_id": "P129",
+  "name_a": "LEVOSYM OZ",
+  "name_b": "RANISYM"
+ },
+ {
+  "pair_id": "P130",
+  "name_a": "AXPERO",
+  "name_b": "ROXPEN"
+ },
+ {
+  "pair_id": "P131",
+  "name_a": "MANAGE PLUS MG 5",
+  "name_b": "NAGE HP"
+ },
+ {
+  "pair_id": "P132",
+  "name_a": "HEXIMAR B",
+  "name_b": "HEXZONE SB"
+ },
+ {
+  "pair_id": "P133",
+  "name_a": "BUTAMIRATE",
+  "name_b": "BUTOCONAZOLE"
+ },
+ {
+  "pair_id": "P134",
+  "name_a": "BLADMIR S",
+  "name_b": "BLUXONE S"
+ },
+ {
+  "pair_id": "P135",
+  "name_a": "PEPTILCER D",
+  "name_b": "SILCEF DRY"
+ },
+ {
+  "pair_id": "P136",
+  "name_a": "TAXOL",
+  "name_b": "TAXOTERE"
+ },
+ {
+  "pair_id": "P137",
+  "name_a": "LIVASTAT",
+  "name_b": "TENLIVAS"
+ },
+ {
+  "pair_id": "P138",
+  "name_a": "PRECITAZ",
+  "name_b": "PREDICIT"
+ },
+ {
+  "pair_id": "P139",
+  "name_a": "FEBICOP",
+  "name_b": "FEXOLOP"
+ },
+ {
+  "pair_id": "P140",
+  "name_a": "ACEMIZ",
+  "name_b": "LIZ"
+ },
+ {
+  "pair_id": "P141",
+  "name_a": "RIBAVIRIN",
+  "name_b": "RIBOFLAVIN"
+ },
+ {
+  "pair_id": "P142",
+  "name_a": "TRAX",
+  "name_b": "VIPRAX"
+ },
+ {
+  "pair_id": "P143",
+  "name_a": "RUMISIDE A",
+  "name_b": "RUTORAX A"
+ },
+ {
+  "pair_id": "P144",
+  "name_a": "FAST D",
+  "name_b": "MIRAFAST"
+ },
+ {
+  "pair_id": "P145",
+  "name_a": "TADALAFIL",
+  "name_b": "TAPENTADOL"
+ },
+ {
+  "pair_id": "P146",
+  "name_a": "VINBLASTINE",
+  "name_b": "VINCRISTINE"
+ },
+ {
+  "pair_id": "P147",
+  "name_a": "ACIBAN",
+  "name_b": "RAXBAN"
+ },
+ {
+  "pair_id": "P148",
+  "name_a": "INFLIXIMAB",
+  "name_b": "RITUXIMAB"
+ },
+ {
+  "pair_id": "P149",
+  "name_a": "DISONATE",
+  "name_b": "DISSONATE"
+ },
+ {
+  "pair_id": "P150",
+  "name_a": "STARFATE O",
+  "name_b": "SURFAZ SN"
+ }
+];
+var BUILD = {
+ "git_sha": "c3cf374",
+ "git_dirty": false,
+ "frozen": true,
+ "from_test_run": false,
+ "script": "scripts/build_rating_app.py",
+ "instrument": "survey_v4_sheet.csv",
+ "instrument_sha256": "9975397d770b5ae10310fbaac0d3700d4328fcfd776cda26c5b5895265d137d2",
+ "n_items": 150,
+ "return_address": "harshitgarg1982009@gmail.com",
+ "return_address_is_placeholder": false,
+ "dataset": {
+  "measured_from": "/Users/harshitgarg/Claude Code/lasa-india/data/processed/drugs_india.csv",
+  "n_rows_before_exclusion": 187945,
+  "n_names": 187900,
+  "n_distinct_names": 167949,
+  "n_indian": 183523,
+  "n_inn": 4377,
+  "by_dataset": {
+   "indian_medicine_dataset": 183523,
+   "who_inn": 4377
+  },
+  "n_unmapped": 9385,
+  "unmapped_rate": {
+   "value": 0.049947,
+   "percent": "5.0%",
+   "name": "unmapped",
+   "means": "carrying no ATC code, so divergence cannot be judged",
+   "population": "the names in the dataset",
+   "numerator": 9385,
+   "denominator": 187900
+  },
+  "unmapped_percent": "5.0%",
+  "n_form_word_rows": 45,
+  "n_form_word_names": 33
+ }
+};
+var PARTICIPANT_STATEMENT = "This is a research study on similarity between drug names marketed in India. You are being asked to rate pairs of names for how easily they could be confused. Participation is voluntary and you may stop at any point. Responses are anonymous and will be used only in aggregate. No pair below has been identified as a hazard: they are drawn from several sources, including at random, and your ratings are what will determine which if any are worth attention. The software that assembled this list is a research prototype. It has not been clinically validated and nothing here should be used to guide practice.";
+var RETURN_ADDRESS = "harshitgarg1982009@gmail.com";
+</script>
+<script>
+"use strict";
+(function () {
+  var STORAGE_KEY = 'lasa-ratings-' + BUILD.instrument_sha256.slice(0, 12);
+  var screens = {
+    consent: document.getElementById('screen-consent'),
+    about: document.getElementById('screen-about'),
+    rate: document.getElementById('screen-rate'),
+    index: document.getElementById('screen-index'),
+    review: document.getElementById('screen-review'),
+    early: document.getElementById('screen-early'),
+    done: document.getElementById('screen-done'),
+    resume: document.getElementById('screen-resume'),
+  };
+
+  /* ------------------------------------------------- the consent screen
+
+     §5 asks for five short paragraphs covering what this is, what you will
+     do, how long it takes, that it is anonymous and nothing is sent
+     automatically, and that it is not clinically validated.
+
+     PARTICIPANT_STATEMENT already says all of that except the duration and
+     the "nothing is sent" mechanism, and its substance is locked -- it is
+     what a rater consents to, and EASIER_RETURN.md §8 puts it out of scope
+     for an interface change. So the five paragraphs are **assembled from its
+     own sentences** rather than rewritten: every word a rater reads is the
+     protocol's, in the protocol's order, and the design contributes the
+     paragraph breaks and the two operational sentences the statement does
+     not carry. A sentence edited in `survey_instrument.py` moves this screen
+     with it, and `tests/test_rating_app.py` asserts every one of them
+     arrives. */
+  function statementSentences() {
+    return PARTICIPANT_STATEMENT.split(/(?<=\.)\s+/)
+      .map(function (s) { return s.trim(); })
+      .filter(function (s) { return s.length > 0; });
+  }
+
+  function renderStatement() {
+    var said = statementSentences();
+    // Which of the statement's sentences open each paragraph. Indices, so a
+    // sentence cannot be silently dropped: every one lands in exactly one
+    // paragraph and the last group runs to the end.
+    var groups = [[0, 1], [2], [3], [4], [5, 6]];
+    // The two the statement does not carry, and §5 requires. They are about
+    // how the page works, not about what the study is.
+    var added = {
+      1: INSTRUMENT.length + ' pairs, two questions each, about 20 to 30 '
+         + 'minutes. Answers are saved in this browser as you go.',
+      2: 'Nothing is sent from this page, which makes no network connection. '
+         + 'At the end you choose how to return your answers.',
+    };
+    var container = document.getElementById('statement');
+    container.textContent = '';
+    groups.forEach(function (indices, position) {
+      var text = indices.map(function (i) { return said[i]; })
+        .filter(Boolean).join(' ');
+      if (added[position]) text = text + ' ' + added[position];
+      var paragraph = document.createElement('p');
+      paragraph.textContent = text;
+      container.appendChild(paragraph);
+    });
+    // Any sentence the grouping did not place. It cannot be dropped in
+    // silence: a statement is the thing a rater consents to.
+    var placed = groups.reduce(function (all, g) { return all.concat(g); }, []);
+    said.forEach(function (sentence, index) {
+      if (placed.indexOf(index) !== -1) return;
+      var extra = document.createElement('p');
+      extra.textContent = sentence;
+      container.appendChild(extra);
+    });
+  }
+  renderStatement();
+
+  // Every place the address appears, from one source. It is on the done
+  // screen only, which `web/rating_app.test.html` asserts against the DOM.
+  Array.prototype.forEach.call(document.querySelectorAll('.return-address'),
+    function (element) { element.textContent = RETURN_ADDRESS; });
+
+  function show(name) {
+    Object.keys(screens).forEach(function (key) {
+      screens[key].hidden = key !== name;
+    });
+    window.scrollTo(0, 0);
+  }
+
+  function randomId() {
+    var bytes = new Uint8Array(8);
+    (window.crypto || window.msCrypto).getRandomValues(bytes);
+    return Array.prototype.map.call(bytes, function (b) {
+      return ('0' + b.toString(16)).slice(-2);
+    }).join('');
+  }
+
+  var state = null;
+
+  function blank() {
+    return {
+      rater_id: randomId(),
+      started_at: new Date().toISOString(),
+      instrument: BUILD.instrument,
+      instrument_sha256: BUILD.instrument_sha256,
+      demographics: { years: '', setting: '', languages: '' },
+      position: 0,
+      responses: {},
+      // Set from the first screen, and saved, so a resumed session keeps the
+      // rater's choice rather than reverting to the default.
+      auto_advance: true,
+      // §4 -- once each, so a resumed session does not repeat them.
+      milestones_shown: [],
+      // Amendment 10. Per item, and the session counters beside it.
+      active_ms: {},
+      away_events: 0,
+      idle_pauses: 0,
+      first_item_at: null,
+      // Amendments 11 and 12: facts about the session, recorded because a
+      // rater who saw the prompt and continued, or who chose to finish
+      // early, is worth knowing about when the responses are read.
+      fast_prompt_shown: false,
+      early_finish_used: false,
+      // Amendment 13. Descriptive only: recorded so the assumption that free
+      // navigation does not bias any arm can be checked rather than assumed.
+      index_jumps: 0,
+      //: The items answered on a revisit, by pair id. A list rather than a
+      //: counter: the count is its length, so a rater who changes an answer
+      //: twice on one pair is counted once without a second structure
+      //: remembering that it already happened.
+      out_of_sequence_items: [],
+      //: The highest item position reached in sequence. An item answered at a
+      //: position at or below this was answered on a second visit.
+      furthest_in_sequence: 0,
+    };
+  }
+
+  function save() {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      return true;
+    } catch (error) {
+      // Private browsing, or storage disabled. The rater can still finish and
+      // return their answers; they just cannot close the tab and come back.
+      // The saved indicator is not shown for a save that did not happen.
+      return false;
+    }
+  }
+
+  function load() {
+    try {
+      var raw = window.localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function answered() {
+    return Object.keys(state.responses).length;
+  }
+
+  /* ------------------------------------------------------------- rating */
+
+  function currentItem() {
+    return INSTRUMENT[state.position];
+  }
+
+  function currentResponse() {
+    var item = currentItem();
+    if (!state.responses[item.pair_id]) {
+      state.responses[item.pair_id] = { seen_confused: '', confusability: null,
+                                        comment: '' };
+    }
+    return state.responses[item.pair_id];
+  }
+
+  function paint() {
+    var item = currentItem();
+    var response = currentResponse();
+
+    LASA_ALIGN.renderAlignment(document.getElementById('names'),
+                               item.name_a, item.name_b, { plain: true });
+
+    // §4 -- the count and the bar. "34 of 150" alone reads as a long way to
+    // go; the bar shows how far they have come, which is the same fact.
+    document.getElementById('progress').textContent =
+      (state.position + 1) + ' of ' + INSTRUMENT.length;
+    setBar(state.position);
+    showMilestone(state.position);
+
+    setPressed('seen', response.seen_confused);
+    setPressed('rating', response.confusability === null
+      ? '' : String(response.confusability));
+    document.getElementById('comment').value = response.comment || '';
+    document.getElementById('note').open = Boolean(response.comment);
+    applyLock();
+    document.getElementById('back').disabled = state.position === 0;
+    document.getElementById('next').textContent =
+      state.position === INSTRUMENT.length - 1 ? 'Finish' : 'Next';
+    cancelPendingAdvance();
+    // A highlight belongs to the item that raised it. Left on, it follows the
+    // rater to the next pair and reads as a complaint about an item they have
+    // not seen yet -- which NAVIGATION.md §2 forbids in as many words.
+    if (wantsTimer) { clearTimeout(wantsTimer); wantsTimer = null; }
+    Array.prototype.forEach.call(
+      document.querySelectorAll('.choices.wants-an-answer'),
+      function (node) { node.classList.remove('wants-an-answer'); });
+    arrivedComplete = isComplete(response);
+    if (!state.first_item_at) {
+      state.first_item_at = new Date().toISOString();
+      save();
+    }
+    if (state.position > (state.furthest_in_sequence || 0)) {
+      state.furthest_in_sequence = state.position;
+    }
+    startClock(item.pair_id);
+  }
+
+  function setBar(position) {
+    document.getElementById('bar-fill').style.width =
+      (position / INSTRUMENT.length * 100) + '%';
+  }
+
+  /* §4 -- at items 50 and 100, once each, no styling and no celebration. A
+     rater who has done a third of a long task is entitled to know it. */
+  var MILESTONES = { 50: 'a third done', 100: 'two thirds done' };
+
+  function showMilestone(position) {
+    var element = document.getElementById('milestone');
+    var item = position + 1;
+    var text = MILESTONES[item];
+    if (!text || state.milestones_shown.indexOf(item) !== -1) {
+      element.textContent = '';
+      return;
+    }
+    state.milestones_shown.push(item);
+    save();
+    element.textContent = text;
+  }
+
+  /* §4 -- "saved", next to the count, for two seconds after each answer.
+
+     It is shown only when the write actually succeeded. Telling somebody
+     their work is safe when it is not is worse than telling them nothing,
+     and storage does fail -- private browsing, or a device that has run out
+     of room. */
+  var SAVED_MS = 2000;
+  var savedTimer = null;
+
+  function showSaved(stored) {
+    var element = document.getElementById('saved');
+    if (!element) return;
+    if (!stored) { element.hidden = true; return; }
+    element.hidden = false;
+    if (savedTimer) clearTimeout(savedTimer);
+    savedTimer = setTimeout(function () {
+      savedTimer = null;
+      element.hidden = true;
+    }, SAVED_MS);
+  }
+
+  /* ------------------------------------------------------ active time
+
+     Amendment 10. Milliseconds during which the page was visible, focused,
+     and fewer than IDLE_SECONDS from the last input. All three, because each
+     catches something the others do not: a backgrounded tab, a window behind
+     another one, and a rater who walked away with everything still in front.
+
+     The idle threshold is 120 seconds and that is deliberate. A rater staring
+     at a hard pair for ninety seconds is doing the task and that time counts.
+     Someone who left is not. Two minutes separates those without punishing
+     thought -- and getting this wrong in the *strict* direction would be
+     worse than not measuring at all, because it would systematically shorten
+     exactly the items people found hardest.
+
+     None of it is shown. A visible timer turns a judgement task into a speed
+     test and changes the answers, which would corrupt the thing it was added
+     to measure. */
+  var IDLE_SECONDS = 120;
+  var SECONDS_CEILING = 1295;
+
+  var clock = {
+    item: null,          //: pair id the clock is attributed to
+    since: 0,            //: when the current running stretch began
+    lastInput: Date.now(),
+    running: false,
+    idleTimer: null,
+  };
+
+  function canRun() {
+    return document.visibilityState === 'visible'
+      && document.hasFocus()
+      && (Date.now() - clock.lastInput) < IDLE_SECONDS * 1000;
+  }
+
+  //: Fold the running stretch into the item it belongs to. Called before
+  //: anything that changes which item is current, or whether the clock runs.
+  function settle() {
+    if (!clock.running || !clock.item) { clock.running = false; return; }
+    var elapsed = Date.now() - clock.since;
+    if (elapsed > 0) {
+      state.active_ms[clock.item] = (state.active_ms[clock.item] || 0) + elapsed;
+    }
+    clock.running = false;
+  }
+
+  function startClock(pairId) {
+    if (clock.running && clock.item === pairId) return;
+    settle();
+    clock.item = pairId;
+    if (canRun()) {
+      clock.since = Date.now();
+      clock.running = true;
+    }
+    scheduleIdle();
+  }
+
+  function scheduleIdle() {
+    if (clock.idleTimer) clearTimeout(clock.idleTimer);
+    var remaining = IDLE_SECONDS * 1000 - (Date.now() - clock.lastInput);
+    if (remaining <= 0) return;
+    clock.idleTimer = setTimeout(function () {
+      // The clock has been running with no input for the whole threshold.
+      if (clock.running) {
+        settle();
+        state.idle_pauses = (state.idle_pauses || 0) + 1;
+        save();
+      }
+    }, remaining + 20);
+  }
+
+  function noteInput() {
+    var wasIdle = (Date.now() - clock.lastInput) >= IDLE_SECONDS * 1000;
+    clock.lastInput = Date.now();
+    if ((!clock.running || wasIdle) && clock.item && canRun()) {
+      clock.since = Date.now();
+      clock.running = true;
+    }
+    scheduleIdle();
+  }
+
+  function pauseFor(reason) {
+    if (clock.running) {
+      settle();
+      if (reason === 'away') {
+        state.away_events = (state.away_events || 0) + 1;
+      }
+      save();
+    }
+  }
+
+  function resumeClock() {
+    clock.lastInput = Date.now();
+    if (!clock.running && clock.item && canRun()) {
+      clock.since = Date.now();
+      clock.running = true;
+    }
+    scheduleIdle();
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') resumeClock();
+    else pauseFor('away');
+  });
+  window.addEventListener('blur', function () { pauseFor('away'); });
+  window.addEventListener('focus', resumeClock);
+  ['keydown', 'pointerdown', 'input'].forEach(function (name) {
+    document.addEventListener(name, noteInput, true);
+  });
+
+  function activeSeconds(pairId) {
+    var ms = state.active_ms[pairId];
+    return ms === undefined ? null : Math.round(ms / 1000);
+  }
+
+  function totalActiveSeconds() {
+    settle();
+    var total = 0;
+    Object.keys(state.active_ms).forEach(function (id) {
+      total += state.active_ms[id];
+    });
+    if (clock.running && clock.item) clock.since = Date.now();
+    return Math.round(total / 1000);
+  }
+
+  function wallSeconds() {
+    var first = state.first_item_at || state.started_at;
+    if (!first) return 0;
+    return Math.max(0, Math.round((Date.now() - new Date(first).getTime()) / 1000));
+  }
+
+  /* --------------------------------------------------------- the gating
+
+     REQUIRED_ANSWERS.md §2. Question 2 is locked until question 1 is
+     answered, and the lock is enforced in **one** place: `locked()` decides,
+     `applyLock()` renders, and `choose()` refuses. The keyboard and the
+     pointer both go through `choose`, so there is no second route to keep in
+     step -- which is the same structural fix as the rating scale living only
+     in the buttons.
+
+     There is no skip. Question 1 already offers *unsure* and question 2
+     already offers *1 — not at all*; a third way of saying "I don't know"
+     competes with both and gives worse data than one clear route. Nobody is
+     trapped, and an accidental gap is indistinguishable from a deliberate one
+     in the export, which is exactly what the pilot produced. */
+  function locked() {
+    return !currentResponse().seen_confused;
+  }
+
+  function applyLock() {
+    var isLocked = locked();
+    var group = document.getElementById('rating');
+    Array.prototype.forEach.call(group.children, function (button) {
+      button.disabled = isLocked;
+      // Not focusable while locked: tabbing onto a control that does nothing
+      // is the same lie as a live-looking button that does nothing.
+      if (isLocked) button.setAttribute('tabindex', '-1');
+      else button.removeAttribute('tabindex');
+    });
+    var ends = document.querySelector('#screen-rate .ends');
+    if (ends) ends.classList.toggle('is-locked', isLocked);
+  }
+
+  /* §3 -- Enter on an incomplete item does not advance. It shows which
+     question is still open, for 600ms, by moving its border to
+     `--border-strong`. No message, no red, no shake. */
+  var WANTS_AN_ANSWER_MS = 600;
+  var wantsTimer = null;
+
+  function askFor(groupId) {
+    var group = document.getElementById(groupId);
+    if (!group) return;
+    if (wantsTimer) {
+      clearTimeout(wantsTimer);
+      Array.prototype.forEach.call(
+        document.querySelectorAll('.choices.wants-an-answer'),
+        function (node) { node.classList.remove('wants-an-answer'); });
+    }
+    group.classList.add('wants-an-answer');
+    wantsTimer = setTimeout(function () {
+      wantsTimer = null;
+      group.classList.remove('wants-an-answer');
+    }, WANTS_AN_ANSWER_MS);
+  }
+
+  //: The first question still missing on this item, or null when it is
+  //: complete. The single answer to "can this item advance?".
+  function missingAnswer() {
+    var response = currentResponse();
+    if (!response.seen_confused) return 'seen';
+    if (!(response.confusability >= 1)) return 'rating';
+    return null;
+  }
+
+  function setPressed(groupId, value) {
+    var group = document.getElementById(groupId);
+    Array.prototype.forEach.call(group.children, function (button) {
+      button.setAttribute('aria-pressed',
+        String(button.getAttribute('data-value') === value));
+    });
+  }
+
+  /* The buttons a group renders are the only statement of what that group
+     accepts, so `choose` asks them rather than carrying a second copy of the
+     scale. The handler used to test the pressed key against a string literal
+     of the five digits with indexOf, which returns 0 -- not -1 -- for the
+     empty string, so a keydown carrying an empty `key` passed the test and
+     wrote `Number('')`, a rating of 0, over whatever the rater had chosen. It
+     is outside the 1-5 scale, and nothing downstream would have rejected it:
+     `read_responses` took any integer and `outcomes_by_source` reads a 0 as
+     "not confusable", indistinguishable from unrated. Returns whether the
+     value was accepted, so the keyboard handler need not know the scale. */
+  function offers(groupId, value) {
+    var group = document.getElementById(groupId);
+    return Array.prototype.some.call(group.children, function (button) {
+      return button.getAttribute('data-value') === value;
+    });
+  }
+
+  function choose(groupId, value) {
+    if (!offers(groupId, value)) return false;
+    // §2 -- keys 1 to 5 are inert while locked: not queued, not buffered, not
+    // applied later. A keystroke that takes effect two seconds after it was
+    // pressed is a rating the rater did not knowingly give.
+    if (groupId === 'rating' && locked()) {
+      askFor('seen');
+      return false;
+    }
+    var response = currentResponse();
+    if (groupId === 'seen') response.seen_confused = value;
+    else response.confusability = Number(value);
+    setPressed(groupId, value);
+    applyLock();
+    // Amendment 13 -- an item completed at or below the furthest position
+    // already reached was answered on a second visit. Counted once per item
+    // rather than once per keystroke, so changing a second answer on the same
+    // pair does not count twice.
+    if (!missingAnswer() && state.position < state.furthest_in_sequence
+        && state.out_of_sequence_items.indexOf(currentItem().pair_id) === -1) {
+      state.out_of_sequence_items.push(currentItem().pair_id);
+    }
+    showSaved(save());
+    // §3 -- answering an item reached from the review screen returns there
+    // with the list one shorter, rather than continuing forwards through
+    // items the rater already passed.
+    if (cameFromReview && !missingAnswer()) {
+      cancelPendingAdvance();
+      commit();
+      cameFromReview = false;
+      if (unansweredItems().length) {
+        renderReview();
+        show('review');
+      } else {
+        finishFor('complete');
+      }
+      return true;
+    }
+    maybeAutoAdvance();
+    return true;
+  }
+
+  function commit() {
+    var response = currentResponse();
+    response.comment = document.getElementById('comment').value;
+    save();
+  }
+
+  /* --------------------------------------------------------- auto-advance
+
+     Three actions per item becomes two: answer, answer, and the app moves on.
+     450 keystrokes across the instrument becomes 300, and it removes the one a
+     rater has to remember.
+
+     It fires only when **both** questions are answered -- one answer is not a
+     complete item, and advancing on it would produce partials nobody intended.
+     The delay is long enough to see a misclick and fix it, and any further
+     input cancels the pending move, so correcting an answer keeps you on the
+     item rather than racing the timer.
+
+     It does not fire on an item that was already complete when you arrived.
+     Revisiting a pair to change one answer would otherwise throw you forward
+     again, which is the opposite of what someone going back wants.
+
+     §8 -- it must be visible, and it is the one exception to "no motion":
+     the selected answer holds its selected state through the delay and the
+     progress bar advances during it, so the rater sees the move coming
+     rather than having the screen change under them. */
+  var AUTO_ADVANCE_MS = 400;
+  var pendingAdvance = null;
+  //: Whether the item was already complete when this position was painted.
+  //: Auto-advance is for finishing an item, not for revisiting one.
+  var arrivedComplete = false;
+
+  function cancelPendingAdvance() {
+    if (pendingAdvance) {
+      clearTimeout(pendingAdvance);
+      pendingAdvance = null;
+      setBar(state.position);
+    }
+  }
+
+  function isComplete(response) {
+    return Boolean(response) && response.confusability >= 1
+      && Boolean(response.seen_confused);
+  }
+
+  function maybeAutoAdvance() {
+    cancelPendingAdvance();
+    if (!state.auto_advance || arrivedComplete) return;
+    if (!isComplete(currentResponse())) return;
+    setBar(state.position + 1);
+    pendingAdvance = setTimeout(function () {
+      pendingAdvance = null;
+      advance(1);
+    }, AUTO_ADVANCE_MS);
+  }
+
+  /* NAVIGATION.md §2 supersedes REQUIRED_ANSWERS.md §3.
+  
+     Advancing no longer requires both answers, and that reversal is the
+     point rather than a relaxation: a rater who wants to move past a hard
+     pair and come back to it is doing the task carefully, and forcing an
+     answer on the spot produces a worse one. Completeness is checked once,
+     at the end, where it can be acted on.
+  
+     What stays is question 2's lock on question 1 -- that is about order
+     within an item, not about forcing completion.
+  
+     Nothing marks an incomplete item: no error, no warning, no styling
+     change. Flagging it as a lapse would discourage the behaviour this
+     change exists to allow. */
+  function advance(step) {
+    cancelPendingAdvance();
+    commit();
+    var next = state.position + step;
+    if (next < 0) return false;
+    if (next >= INSTRUMENT.length) { finish(); return true; }
+    state.position = next;
+    save();
+    paint();
+    return true;
+  }
+
+  /* Every item with either question unanswered, in the instrument's order.
+     The list the review screen is built from, and the thing amendment 12
+     made possible again: interior gaps, through the early-finish route and
+     only through it. */
+  function unansweredItems() {
+    var out = [];
+    INSTRUMENT.forEach(function (item, index) {
+      var response = state.responses[item.pair_id];
+      var missing = [];
+      if (!(response && response.seen_confused)) missing.push('the first question');
+      if (!(response && response.confusability >= 1)) missing.push('the rating');
+      if (missing.length) {
+        out.push({ index: index, item: item, missing: missing });
+      }
+    });
+    return out;
+  }
+
+  function finish() {
+    cancelPendingAdvance();
+    settle();
+    save();
+    // §3 -- the review screen replaces the final screen while anything is
+    // unanswered, and the return options are not on it. This is the one
+    // place the app asks for completeness, instead of asking 150 times.
+    if (unansweredItems().length) {
+      renderReview();
+      show('review');
+      return;
+    }
+    finishFor('complete');
+  }
+
+  function finishFor(how) {
+    cancelPendingAdvance();
+    settle();
+    state.completed_at = new Date().toISOString();
+    if (how === 'early') state.early_finish_used = true;
+    save();
+    var count = answeredCount();
+    var missing = INSTRUMENT.length - count;
+    document.getElementById('done-summary').textContent = missing === 0
+      ? 'You rated all ' + INSTRUMENT.length + ' pairs.'
+      : 'You rated ' + count + ' of ' + INSTRUMENT.length + ' pairs — '
+        + missing + (missing === 1 ? ' was' : ' were')
+        + ' left blank. You can still send what you have.';
+    // Amendment 11. Below the threshold, once per session, before the return
+    // options are used. It blocks nothing: both buttons lead somewhere and
+    // neither is styled as a warning.
+    var prompt = document.getElementById('fast-prompt');
+    var quick = totalActiveSeconds() < FAST_MINUTES * 60;
+    if (prompt) {
+      var showIt = quick && !state.fast_prompt_shown;
+      prompt.hidden = !showIt;
+      if (showIt) {
+        state.fast_prompt_shown = true;
+        save();
+      }
+    }
+    renderReturnRoutes(document.getElementById('return-routes'));
+    show('done');
+  }
+
+  function renderReview() {
+    var missing = unansweredItems();
+    document.getElementById('review-heading').textContent =
+      missing.length === 1
+        ? '1 pair still needs an answer'
+        : missing.length + ' pairs still need an answer';
+    var list = document.getElementById('review-list');
+    list.textContent = '';
+    missing.forEach(function (row) {
+      // Both names, not the item number. A number is meaningless to a rater;
+      // the names are how they recognise the pair they skipped.
+      var button = document.createElement('button');
+      button.className = 'review-row';
+      button.setAttribute('data-position', String(row.index));
+      var names = document.createElement('span');
+      names.className = 'mono review-names';
+      names.textContent = row.item.name_a + '  /  ' + row.item.name_b;
+      var what = document.createElement('span');
+      what.className = 'xs muted';
+      what.textContent = 'missing ' + row.missing.join(' and ');
+      button.appendChild(names);
+      button.appendChild(what);
+      button.addEventListener('click', function () {
+        state.position = row.index;
+        cameFromReview = true;
+        save();
+        show('rate');
+        paint();
+      });
+      list.appendChild(button);
+    });
+  }
+
+  //: Whether the rater reached this item from the review screen. Answering it
+  //: then returns them there rather than marching them on through items they
+  //: already passed.
+  var cameFromReview = false;
+
+  function renderEarlyReturn() {
+    var panel = document.getElementById('early-return');
+    if (!panel) return;
+    var found = renderReturnRoutes(panel);
+    document.getElementById('early-summary').textContent =
+      'You have answered ' + found.answered + ' of ' + INSTRUMENT.length
+      + ' pairs. All three routes send the same thing, and unanswered pairs '
+      + 'are marked as unanswered rather than guessed. Your answers stay in '
+      + 'this browser, so you can come back and carry on.';
+  }
+
+  /* ------------------------------------------------------------- export */
+
+  function exportPayload() {
+    return {
+      rater_id: state.rater_id,
+      started_at: state.started_at,
+      completed_at: state.completed_at || null,
+      instrument: state.instrument,
+      instrument_sha256: state.instrument_sha256,
+      app_build: BUILD,
+      demographics: state.demographics,
+      responses: INSTRUMENT.map(function (item) {
+        var response = state.responses[item.pair_id]
+          || { seen_confused: '', confusability: null, comment: '' };
+        return {
+          pair_id: item.pair_id,
+          name_a: item.name_a,
+          name_b: item.name_b,
+          seen_confused: response.seen_confused,
+          confusability: response.confusability,
+          comment: response.comment,
+        };
+      }),
+    };
+  }
+
+  /* ------------------------------------------------- the compact string
+
+     The instrument's order is fixed and recorded in the key, so a returned
+     response needs no pair ids, no names and no item data -- two ordered
+     strings are enough, and the whole thing fits in an email body. The format
+     is defined once in `src/lasa/response_codec.py`; this is the other half,
+     and `tests/test_response_codec.py` checks the two against each other on
+     fixed cases the way the metrics are checked.
+
+         v1|<rater_id>|<ratings>|<seen>|<years>|<setting>|<languages>
+         #<pair_id>|<comment>
+
+     The demographics and the comments are percent-encoded because
+     `languages` is free text and could otherwise contain the delimiter. */
+  var SEEN_CODES = { yes: 'y', no: 'n', unsure: 'u' };
+  var BASE36 = '0123456789abcdefghijklmnopqrstuvwxyz';
+  var FAST_MINUTES = 10;
+
+  /* CRC-32, to match `zlib.crc32` in `src/lasa/response_codec.py`.
+
+     Not a security measure and not presented as one: the page is
+     client-side, the format is in the source, and anyone determined can
+     recompute it. What it does is make **damage** visible -- a rater tidying
+     up a wall of characters, or far more likely a mail client wrapping a long
+     line in transit. Neither is detectable without it, and both decode
+     positionally into the wrong items. */
+  var CRC_TABLE = (function () {
+    var table = new Int32Array(256);
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      table[n] = c;
+    }
+    return table;
+  })();
+
+  function crc32(text) {
+    var bytes = new TextEncoder().encode(text);
+    var crc = -1;
+    for (var i = 0; i < bytes.length; i++) {
+      crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ bytes[i]) & 0xFF];
+    }
+    return (crc ^ -1) >>> 0;
+  }
+
+  function checksum(text) {
+    var value = crc32(text);
+    if (value === 0) return '0';
+    var out = '';
+    while (value > 0) {
+      out = BASE36.charAt(value % 36) + out;
+      value = Math.floor(value / 36);
+    }
+    return out;
+  }
+
+  //: Two base-36 characters per item, `--` when there is no timing. A value
+  //: above the ceiling clamps **and is counted**, because a clamped figure
+  //: that read as a measurement would be a number under the wrong name.
+  var clampedItems = 0;
+  function encodeSeconds(seconds) {
+    if (seconds === null || seconds === undefined) return '--';
+    var value = Math.max(0, Math.round(seconds));
+    if (value > SECONDS_CEILING) { clampedItems++; value = SECONDS_CEILING; }
+    return BASE36.charAt(Math.floor(value / 36)) + BASE36.charAt(value % 36);
+  }
+
+  function compactString() {
+    settle();
+    var ratings = '', seen = '', times = '', comments = [];
+    clampedItems = 0;
+    INSTRUMENT.forEach(function (item) {
+      var response = state.responses[item.pair_id];
+      var rating = response && response.confusability;
+      ratings += (rating >= 1 && rating <= 5) ? String(rating) : '-';
+      seen += (response && SEEN_CODES[response.seen_confused]) || '-';
+      times += encodeSeconds(activeSeconds(item.pair_id));
+    });
+    INSTRUMENT.forEach(function (item) {
+      var response = state.responses[item.pair_id];
+      if (response && response.comment && response.comment.trim()) {
+        comments.push('#' + item.pair_id + '|' + encodeURIComponent(response.comment));
+      }
+    });
+    var reached = Object.keys(state.active_ms).length;
+    var summary = [
+      totalActiveSeconds(),
+      state.away_events || 0,
+      state.idle_pauses || 0,
+      wallSeconds(),
+      clampedItems,
+      state.fast_prompt_shown ? 1 : 0,
+      state.early_finish_used ? 1 : 0,
+      reached,
+      state.index_jumps || 0,
+      (state.out_of_sequence_items || []).length,
+    ].join(',');
+    var header = ['v2', state.rater_id, ratings, seen, times, summary,
+                  encodeURIComponent(state.demographics.years || ''),
+                  encodeURIComponent(state.demographics.setting || ''),
+                  encodeURIComponent(state.demographics.languages || '')].join('|');
+    var body = [header].concat(comments).join('\n');
+    // The checksum is the last line and covers every line above it, comments
+    // included, so what it covers is unambiguous.
+    return body + '\n=' + checksum(body);
+  }
+
+  function answeredCount() {
+    var n = 0;
+    INSTRUMENT.forEach(function (item) {
+      var response = state.responses[item.pair_id];
+      if (response && response.confusability >= 1) n++;
+    });
+    return n;
+  }
+
+  /* ------------------------------------------------------ the three routes
+
+     All three carry the same string. A route that returned less than another
+     would make which one a rater picked part of the data. */
+
+  //: Some mail clients truncate a mailto body above roughly 2,000 characters,
+  //: and a truncated response decodes positionally into the wrong items. Below
+  //: the limit the email route is offered; above it, it is not offered at all
+  //: and the screen says why.
+  var MAILTO_LIMIT = 1800;
+
+  /* The body a rater actually reads before pressing send.
+
+     The first version put the compact string second and explained it third,
+     so what a person saw first was 300 characters of dashes with no idea what
+     they were looking at or why. Someone asked to email something about
+     themselves is entitled to know what it says, and a rater who cannot tell
+     whether it worked may not send it at all.
+
+     The string still cannot be made readable -- that is what makes it fit in
+     an email -- so the body says what it is, what it does not contain, and
+     why it must not be edited, before showing it. The readable version of
+     their answers is on the screen they are looking at. */
+  function mailBody(payload, partial, count) {
+    var total = INSTRUMENT.length;
+    return 'Thank you for rating these name pairs.\n\n'
+      + 'You answered ' + count + ' of ' + total + ' pairs'
+      + (partial ? ', and stopped before the end.' : '.') + '\n\n'
+      + 'Below are those answers in a compact form. It carries no drug names: '
+      + 'the list of pairs is fixed, so their positions are enough to read '
+      + 'what you said. Please leave it exactly as it is — it is read by '
+      + 'position, so an edited line cannot be read at all.\n\n'
+      + '----- my answers, please do not edit -----\n'
+      + payload + '\n'
+      + '----- end of my answers -----\n';
+  }
+
+  function mailtoLink(payload, partial, count) {
+    var subject = 'LASA ratings' + (partial ? ' (partial)' : '') + ' — ' + state.rater_id;
+    return 'mailto:' + encodeURIComponent(RETURN_ADDRESS)
+      + '?subject=' + encodeURIComponent(subject)
+      + '&body=' + encodeURIComponent(mailBody(payload, partial, count));
+  }
+
+  function renderReturnRoutes(container) {
+    var payload = compactString();
+    var count = answeredCount();
+    var partial = count < INSTRUMENT.length;
+    var body = mailBody(payload, partial, count);
+    var withinLimit = body.length <= MAILTO_LIMIT;
+
+    var email = container.querySelector('.route-email');
+    var note = container.querySelector('.route-note');
+    if (email) {
+      if (withinLimit) {
+        email.href = mailtoLink(payload, partial, count);
+        email.hidden = false;
+      } else {
+        email.hidden = true;
+      }
+    }
+    if (note) {
+      note.textContent = withinLimit
+        ? ''
+        : 'Your notes make this too long to send as an email link — some '
+          + 'mail apps would cut it short, and a shortened response cannot be '
+          + 'read at all. Use Copy or Download instead; both carry everything, '
+          + 'notes included.';
+    }
+    // TIMING.md §C2 -- the payload is not written into the DOM. It exists
+    // here, in the mailto href, and on the clipboard when a rater asks for
+    // it. Nothing renders it.
+    return { payload: payload, partial: partial, answered: count,
+             withinLimit: withinLimit, bodyLength: body.length };
+  }
+
+  function copyPayload(button, confirmation) {
+    var payload = compactString();
+    var label = button.textContent;
+    function done() {
+      if (confirmation) confirmation.hidden = false;
+      button.textContent = 'Copied';
+      setTimeout(function () { button.textContent = label; }, 4000);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(payload).then(done, function () { fallback(); });
+    } else {
+      fallback();
+    }
+    function fallback() {
+      // No clipboard API, or it refused. The old fallback revealed the
+      // payload in a textarea so a rater could copy it by hand; §C2 forbids
+      // rendering it at all, so the honest thing left is to say the copy did
+      // not work and point at the two routes that do not need a clipboard.
+      // Telling somebody it worked when it did not is the one option that is
+      // worse than either.
+      button.textContent = 'Copy failed';
+      var note = button.closest('#return-routes, #early-return')
+        .querySelector('.route-note');
+      if (note) {
+        note.textContent = 'This browser would not let the page use the '
+          + 'clipboard. Use Email or Download instead — both carry exactly '
+          + 'the same answers.';
+      }
+      setTimeout(function () { button.textContent = label; }, 4000);
+    }
+  }
+
+  function download() {
+    var blob = new Blob([JSON.stringify(exportPayload(), null, 1)],
+                        { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = 'lasa_ratings_' + state.rater_id + '.json';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  /* --------------------------------------------------------- the index
+
+     ITEM_INDEX.md. Reaching item 70 took 70 advances; this is direct
+     navigation to any of the 150.
+
+     **It shows numbers and answer status. It never shows names**, and that is
+     a protocol constraint rather than a design preference -- see amendment 13.
+     A rater who can see all 150 pairs at once begins comparing them against
+     each other instead of judging each on its own, and the resulting ratings
+     would look exactly like ratings. Nothing else is shown either: no source,
+     no score, no rank, no section, same as every other view. */
+
+  function indexState(item) {
+    var response = state.responses[item.pair_id];
+    if (!response) return 'none';
+    var rated = response.confusability >= 1;
+    var seen = Boolean(response.seen_confused);
+    if (rated && seen) return 'answered';
+    if (seen || rated) return 'part';
+    return 'none';
+  }
+
+  function renderIndex() {
+    var grid = document.getElementById('index-grid');
+    grid.textContent = '';
+    INSTRUMENT.forEach(function (item, position) {
+      var cell = document.createElement('button');
+      var status = indexState(item);
+      cell.className = 'index-cell'
+        + (status === 'answered' ? ' is-answered' : '')
+        + (status === 'part' ? ' is-part' : '')
+        + (position === state.position ? ' is-current' : '');
+      // The number, and nothing else. Not the names, not a title attribute,
+      // not a dataset key -- the harness asserts against the rendered DOM.
+      cell.textContent = String(position + 1);
+      cell.setAttribute('role', 'listitem');
+      cell.setAttribute('aria-label', 'pair ' + (position + 1) + ', '
+        + (status === 'answered' ? 'answered'
+           : (status === 'part' ? 'first question answered' : 'unanswered')));
+      cell.addEventListener('click', function () { jumpTo(position); });
+      grid.appendChild(cell);
+    });
+    document.getElementById('index-count').textContent =
+      answeredCount() + ' of ' + INSTRUMENT.length + ' answered';
+  }
+
+  //: Where the rater was when they opened the index, so "Back to where I was"
+  //: means what it says.
+  var indexCameFrom = 0;
+
+  function openIndex() {
+    settle();
+    commit();
+    indexCameFrom = state.position;
+    renderIndex();
+    show('index');
+  }
+
+  function jumpTo(position) {
+    state.index_jumps = (state.index_jumps || 0) + 1;
+    state.position = position;
+    cameFromReview = false;
+    save();
+    show('rate');
+    paint();
+  }
+
+  document.getElementById('open-index').addEventListener('click', openIndex);
+  document.getElementById('index-back').addEventListener('click', function () {
+    state.position = indexCameFrom;
+    save();
+    show('rate');
+    paint();
+  });
+
+  /* -------------------------------------------------------------- wiring */
+
+  document.getElementById('consent').addEventListener('click', function () {
+    show('about');
+  });
+
+  function saveAbout() {
+    state.demographics = {
+      years: document.getElementById('years').value,
+      setting: document.getElementById('setting').value,
+      languages: document.getElementById('languages').value.trim(),
+    };
+    save();
+    show('rate');
+    paint();
+  }
+  document.getElementById('about-next').addEventListener('click', saveAbout);
+  document.getElementById('about-skip').addEventListener('click', function () {
+    // Skip *clears*, rather than merely declining to read the fields. A rater
+    // who typed an answer and then chose to skip has declined, and the button
+    // has to mean that whatever is sitting in the form or in a resumed state.
+    // Not reading is the same as clearing only when nothing was there before,
+    // which is a precondition rather than a guarantee.
+    state.demographics = { years: '', setting: '', languages: '' };
+    save();
+    show('rate');
+    paint();
+  });
+
+  ['seen', 'rating'].forEach(function (groupId) {
+    document.getElementById(groupId).addEventListener('click', function (event) {
+      var button = event.target.closest('button[data-value]');
+      if (button) choose(groupId, button.getAttribute('data-value'));
+    });
+  });
+
+  document.getElementById('next').addEventListener('click', function () { advance(1); });
+  document.getElementById('back').addEventListener('click', function () { advance(-1); });
+  document.getElementById('early-open').addEventListener('click', function () {
+    commit();
+    renderEarlyReturn();
+    show('early');
+  });
+  document.getElementById('early-back').addEventListener('click', function () {
+    show('rate');
+    paint();
+  });
+
+  // §4 -- the escape hatch. Visible, unemphasised, and recorded.
+  document.getElementById('review-finish').addEventListener('click', function () {
+    finishFor('early');
+  });
+  document.getElementById('fast-continue').addEventListener('click', function () {
+    document.getElementById('fast-prompt').hidden = true;
+  });
+  document.getElementById('fast-back').addEventListener('click', function () {
+    document.getElementById('fast-prompt').hidden = true;
+    state.position = 0;
+    cameFromReview = false;
+    save();
+    show('rate');
+    paint();
+  });
+  document.getElementById('download').addEventListener('click', download);
+  document.getElementById('early-download').addEventListener('click', download);
+  document.getElementById('copy').addEventListener('click', function () {
+    copyPayload(this, document.getElementById('copy-confirm'));
+  });
+  document.getElementById('early-copy').addEventListener('click', function () {
+    copyPayload(this, null);
+  });
+  // The link is rebuilt whenever the panel is rendered, but a rater who opens
+  // the panel and then answers another pair would otherwise mail a stale
+  // string. Rebuilding on click costs nothing and cannot be stale.
+  Array.prototype.forEach.call(document.querySelectorAll('.route-email'),
+    function (link) {
+      link.addEventListener('click', function () {
+        renderReturnRoutes(link.closest('#return-routes, #early-return'));
+      });
+    });
+
+  /* The auto-advance switch -- EASIER_RETURN.md §4, "can be turned off from
+     the first screen". A button with `aria-pressed` rather than a checkbox:
+     a user-agent checkbox paints a border colour and a size that are on
+     neither scale in DESIGN.md, and this app has one button shape. */
+  var autoSwitch = document.getElementById('autoadvance');
+  function paintAutoSwitch() {
+    var on = state ? state.auto_advance : true;
+    autoSwitch.setAttribute('aria-pressed', String(on));
+    autoSwitch.textContent = on
+      ? 'Moving to the next pair automatically. Tap to turn off.'
+      : 'Staying on each pair until you press Next. Tap to turn on.';
+  }
+  autoSwitch.addEventListener('click', function () {
+    state.auto_advance = !state.auto_advance;
+    save();
+    paintAutoSwitch();
+  });
+
+  // What the names are and where they came from, from the build record rather
+  // than from prose somebody typed. A rater is entitled to know what they are
+  // looking at; none of it says anything about which pairs came from where.
+  (function renderAbout() {
+    var about = document.getElementById('about-dataset');
+    var d = BUILD.dataset || null;
+    if (!about || !d) { if (about) about.textContent = ''; return; }
+    about.innerHTML =
+      '<p>The pairs are drawn from <strong>' + d.n_names.toLocaleString()
+      + '</strong> distinct drug names: <strong>' + d.n_indian.toLocaleString()
+      + '</strong> brand names marketed in India, and <strong>'
+      + d.n_inn.toLocaleString()
+      + '</strong> international non-proprietary names from the WHO list. '
+      + 'Of those, <strong>' + d.n_unmapped.toLocaleString() + '</strong> ('
+      + d.unmapped_percent + ') carry no ATC code — typically fixed-dose '
+      + 'combinations with no single clean code — so for those the tool cannot '
+      + 'say whether two drugs do different things.</p>'
+      + '<p><strong>' + d.n_form_word_rows + '</strong> entries were set aside '
+      + 'before any comparison, because they normalise to nothing but '
+      + 'dosage-form, route or packaging words — names that reduce to '
+      + '<span class="mono">TABLET</span> or <span class="mono">SR</span>. '
+      + 'They are not in the list you are rating.</p>'
+      + '<p>Every figure here was measured on the dataset this instrument was '
+      + 'drawn from, at the commit named in the file.</p>';
+  })();
+
+  document.getElementById('reset').addEventListener('click', function () {
+    try { window.localStorage.removeItem(STORAGE_KEY); } catch (error) {}
+    state = blank();
+    save();
+    paintAutoSwitch();
+    show('consent');
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (screens.rate.hidden) return;
+    var typing = event.target && event.target.tagName === 'TEXTAREA';
+    if (event.key === 'Enter' && !event.shiftKey) {
+      // §2 -- Enter advances, and no longer refuses on an incomplete item.
+      event.preventDefault();
+      advance(1);
+      return;
+    }
+    if (typing) return;
+    if (event.key === 'Backspace') { event.preventDefault(); advance(-1); return; }
+    if (choose('rating', event.key)) return;
+    var seen = { y: 'yes', n: 'no', u: 'unsure' }[event.key.toLowerCase()];
+    if (seen) choose('seen', seen);
+  });
+
+  document.getElementById('comment').addEventListener('input', function () {
+    currentResponse().comment = this.value;
+  });
+
+  /* --------------------------------------------------------------- start */
+
+  var saved = load();
+  if (saved && saved.instrument_sha256 === BUILD.instrument_sha256
+      && Object.keys(saved.responses || {}).length) {
+    state = saved;
+    // A session saved before either switch existed has no preference and no
+    // milestone record. Defaulting matches the first screen.
+    if (typeof state.auto_advance !== 'boolean') state.auto_advance = true;
+    if (!Array.isArray(state.milestones_shown)) state.milestones_shown = [];
+    // A session saved before the timing existed carries none of it.
+    if (!state.active_ms || typeof state.active_ms !== 'object') state.active_ms = {};
+    if (typeof state.away_events !== 'number') state.away_events = 0;
+    if (typeof state.idle_pauses !== 'number') state.idle_pauses = 0;
+    if (typeof state.fast_prompt_shown !== 'boolean') state.fast_prompt_shown = false;
+    if (typeof state.early_finish_used !== 'boolean') state.early_finish_used = false;
+    if (typeof state.index_jumps !== 'number') state.index_jumps = 0;
+    if (!Array.isArray(state.out_of_sequence_items)) {
+      state.out_of_sequence_items = [];
+    }
+    if (typeof state.furthest_in_sequence !== 'number') {
+      state.furthest_in_sequence = state.position || 0;
+    }
+    document.getElementById('resume-summary').textContent =
+      'You have answered ' + answered() + ' of ' + INSTRUMENT.length
+      + ' pairs on this device. Every answer you gave is still here, exactly '
+      + 'as you left it, and nothing has been sent anywhere.';
+    show('resume');
+  } else {
+    state = blank();
+    save();
+    show('consent');
+  }
+  paintAutoSwitch();
+
+  document.getElementById('resume').addEventListener('click', function () {
+    show('rate');
+    paint();
+  });
+  document.getElementById('restart').addEventListener('click', function () {
+    state = blank();
+    save();
+    paintAutoSwitch();
+    show('consent');
+  });
+
+  // For the test harness only. It reads state; it cannot send anything.
+  window.__app = {
+    get state() { return state; },
+    exportPayload: exportPayload,
+    compactString: compactString,
+    renderReturnRoutes: renderReturnRoutes,
+    renderEarlyReturn: renderEarlyReturn,
+    answeredCount: answeredCount,
+    advance: advance,
+    paint: paint,
+    show: show,
+    statementSentences: statementSentences,
+    unansweredItems: unansweredItems,
+    renderIndex: renderIndex,
+    openIndex: openIndex,
+    jumpTo: jumpTo,
+    renderReview: renderReview,
+    finish: finish,
+    totalActiveSeconds: totalActiveSeconds,
+    activeSeconds: activeSeconds,
+    checksum: checksum,
+    settle: settle,
+    storageKey: STORAGE_KEY,
+  };
+})();
+</script>
+</html>
